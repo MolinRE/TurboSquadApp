@@ -19,3 +19,13 @@
 - Каждое изменение в зоне Laya-скоринга — проверить latency (~33мс)
 - Новая зависимость — сначала сообщение в чат, потом код
 - PR закрывает тикет через "Closes #N" в описании
+
+## Agent skills
+
+### Issue tracker
+
+Задачи ведутся в GitHub Issues репозитория MolinRE/TurboSquadApp (через `gh` CLI). См. `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Single-context: один `CONTEXT.md` и `docs/adr/` в корне репозитория. См. `docs/agents/domain.md`.
