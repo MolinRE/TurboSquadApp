@@ -51,17 +51,17 @@ public static class SeedContent
         JsonSerializer.Deserialize<TripSettings>(ReadResource("trip.json"), EventJson.Options)!;
 
     /// <summary>Флаги, которые ставят остальные сиды: «Флаги между Событиями» внутри стартового контента.</summary>
-    public static IReadOnlyCollection<string> FlagsSetOutside(string eventId) => Events
-        .Where(e => e.Document.Id != eventId)
-        .SelectMany(e => e.Document.Steps)
-        .SelectMany(s => s.Reactions)
-        .SelectMany(r => r.SetsFlags ?? [])
+    public static IReadOnlyCollection<string> FlagsSetElsewhere(string eventId) => Events
+        .Where(seed => seed.Document.Id != eventId)
+        .SelectMany(seed => seed.Document.Steps)
+        .SelectMany(step => step.Reactions)
+        .SelectMany(reaction => reaction.SetsFlags ?? [])
         .ToHashSet();
 
     private static string ReadResource(string fileName)
     {
         var assembly = Assembly.GetExecutingAssembly();
-        var name = assembly.GetManifestResourceNames().Single(n => n.EndsWith($".Content.Seeds.{fileName}", StringComparison.Ordinal));
+        var name = assembly.GetManifestResourceNames().Single(resource => resource.EndsWith($".Content.Seeds.{fileName}", StringComparison.Ordinal));
         using var reader = new StreamReader(assembly.GetManifestResourceStream(name)!);
         return reader.ReadToEnd();
     }

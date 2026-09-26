@@ -69,8 +69,8 @@ if (app.Configuration.GetValue("ContentSeed:SeedOnStartup", true))
     catch (Npgsql.PostgresException ex) when (ex.SqlState == Npgsql.PostgresErrorCodes.UndefinedTable)
     {
         throw new InvalidOperationException(
-            "В базе нет таблиц контента: примените миграции (dotnet ef database update --project back) " +
-            "или отключите засев: ContentSeed__SeedOnStartup=false.", ex);
+            "Content tables are missing: apply migrations (dotnet ef database update --project back) " +
+            "or disable seeding with ContentSeed__SeedOnStartup=false.", ex);
     }
 }
 

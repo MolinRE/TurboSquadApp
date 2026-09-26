@@ -46,32 +46,32 @@ internal static class ContentModel
     {
         modelBuilder.Entity<EventDocumentRecord>(entity =>
         {
-            entity.HasKey(e => new { e.EventId, e.Version });
-            entity.Property(e => e.EventId).HasMaxLength(100);
-            entity.Property(e => e.Document).HasColumnType("jsonb").IsRequired();
+            entity.HasKey(record => new { record.EventId, record.Version });
+            entity.Property(record => record.EventId).HasMaxLength(100);
+            entity.Property(record => record.Document).HasColumnType("jsonb").IsRequired();
         });
 
         modelBuilder.Entity<ScaleRecord>(entity =>
         {
-            entity.HasKey(s => s.Code);
-            entity.Property(s => s.Code).HasMaxLength(50);
-            entity.Property(s => s.Name).HasMaxLength(200).IsRequired();
-            entity.Property(s => s.FailureReason).HasMaxLength(200);
+            entity.HasKey(scale => scale.Code);
+            entity.Property(scale => scale.Code).HasMaxLength(50);
+            entity.Property(scale => scale.Name).HasMaxLength(200).IsRequired();
+            entity.Property(scale => scale.FailureReason).HasMaxLength(200);
         });
 
         modelBuilder.Entity<ServiceClassRecord>(entity =>
         {
-            entity.HasKey(c => c.Code);
-            entity.Property(c => c.Code).HasMaxLength(50);
-            entity.Property(c => c.Name).HasMaxLength(200).IsRequired();
-            entity.Property(c => c.Description).IsRequired();
+            entity.HasKey(serviceClass => serviceClass.Code);
+            entity.Property(serviceClass => serviceClass.Code).HasMaxLength(50);
+            entity.Property(serviceClass => serviceClass.Name).HasMaxLength(200).IsRequired();
+            entity.Property(serviceClass => serviceClass.Description).IsRequired();
         });
 
         modelBuilder.Entity<TripSettingsRecord>(entity =>
         {
-            entity.HasKey(t => t.Id);
-            entity.Property(t => t.Id).HasMaxLength(50);
-            entity.Property(t => t.Document).HasColumnType("jsonb").IsRequired();
+            entity.HasKey(settings => settings.Id);
+            entity.Property(settings => settings.Id).HasMaxLength(50);
+            entity.Property(settings => settings.Document).HasColumnType("jsonb").IsRequired();
         });
     }
 }

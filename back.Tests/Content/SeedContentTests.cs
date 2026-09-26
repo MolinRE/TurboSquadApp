@@ -26,7 +26,7 @@ public class SeedContentTests
     {
         foreach (var seed in SeedContent.Events)
         {
-            var report = EventValidator.Validate(seed.Document, SeedContent.Directory, SeedContent.FlagsSetOutside(seed.Document.Id));
+            var report = EventValidator.Validate(seed.Document, SeedContent.Directory, SeedContent.FlagsSetElsewhere(seed.Document.Id));
 
             Assert.True(report.Errors.Count == 0 && report.Warnings.Count == 0,
                 $"{seed.Document.Id}: {string.Join("; ", report.Errors.Concat(report.Warnings).Select(i => $"{i.Where} — {i.Message}"))}");
@@ -34,11 +34,11 @@ public class SeedContentTests
     }
 
     [Fact]
-    public void Stored_document_is_the_same_event_as_parsed_one()
+    public void Stored_json_of_every_seed_event_is_readable_and_valid()
     {
         foreach (var seed in SeedContent.Events)
         {
-            var reparsed = EventValidator.ValidateJson(seed.Json, SeedContent.Directory, SeedContent.FlagsSetOutside(seed.Document.Id));
+            var reparsed = EventValidator.ValidateJson(seed.Json, SeedContent.Directory, SeedContent.FlagsSetElsewhere(seed.Document.Id));
             Assert.True(reparsed.IsValid);
             Assert.Contains($"\"id\": \"{seed.Document.Id}\"", seed.Json);
         }

@@ -42,7 +42,7 @@ public class ContentSeederTests
 
         await using var db = new AppDbContext(_options);
         var stored = await db.EventDocuments.SingleAsync(e => e.EventId == "sit-33");
-        var report = EventValidator.ValidateJson(stored.Document, SeedContent.Directory, SeedContent.FlagsSetOutside("sit-33"));
+        var report = EventValidator.ValidateJson(stored.Document, SeedContent.Directory, SeedContent.FlagsSetElsewhere("sit-33"));
         Assert.True(report.IsValid);
     }
 

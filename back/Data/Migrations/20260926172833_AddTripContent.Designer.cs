@@ -12,8 +12,8 @@ using TurboSquadApp.Data;
 namespace TurboSquadApp.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260926171616_AddEventContent")]
-    partial class AddEventContent
+    [Migration("20260926172833_AddTripContent")]
+    partial class AddTripContent
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)

@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace TurboSquadApp.Data.Migrations
 {
     /// <inheritdoc />
-    public partial class AddEventContent : Migration
+    public partial class AddTripContent : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
