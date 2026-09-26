@@ -7,6 +7,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<AppUser> Users => Set<AppUser>();
     public DbSet<Depot> Depots => Set<Depot>();
     public DbSet<Brigade> Brigades => Set<Brigade>();
+    public DbSet<AppUserRole> UserRoles => Set<AppUserRole>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -44,6 +45,16 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
+        modelBuilder.Entity<AppUserRole>(entity =>
+        {
+            entity.HasKey(role => new { role.UserId, role.Role });
+            entity.Property(role => role.Role).HasMaxLength(50).IsRequired();
+            entity.HasOne(role => role.User)
+                .WithMany(user => user.Roles)
+                .HasForeignKey(role => role.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
         SeedOrganization(modelBuilder);
     }
 
@@ -77,6 +88,21 @@ public sealed class AppUser
     public Guid BrigadeId { get; set; }
     public Brigade Brigade { get; set; } = null!;
     public DateTimeOffset CreatedAt { get; set; }
+    public ICollection<AppUserRole> Roles { get; set; } = new List<AppUserRole>();
+}
+
+public sealed class AppUserRole
+{
+    public Guid UserId { get; set; }
+    public AppUser User { get; set; } = null!;
+    public string Role { get; set; } = string.Empty;
+}
+
+public static class UserRoles
+{
+    public const string Conductor = "conductor";
+    public const string Manager = "manager";
+    public const string Methodologist = "methodologist";
 }
 
 public sealed class Depot

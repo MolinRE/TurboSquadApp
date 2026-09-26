@@ -69,6 +69,7 @@ public sealed class RegistrationService(AppDbContext dbContext, IPasswordHasher<
         user.PasswordHash = passwordHasher.HashPassword(user, request.Password);
 
         dbContext.Users.Add(user);
+        user.Roles.Add(new AppUserRole { UserId = user.Id, Role = UserRoles.Conductor });
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return RegistrationResult.Success(new RegistrationResponse(
