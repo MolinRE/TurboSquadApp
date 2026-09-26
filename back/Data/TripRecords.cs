@@ -66,6 +66,15 @@ public sealed class TripJournalRecord
     public bool CriticalError { get; set; }
     public string? ToStepId { get; set; }
 
+    /// <summary>Поля голосовой попытки. Аудио никогда не сохраняется.</summary>
+    public string? VoiceTranscript { get; set; }
+    public string? VoiceChoice { get; set; }
+    public double? VoiceConfidence { get; set; }
+    public int? VoiceLatencyMs { get; set; }
+    public bool VoiceApplied { get; set; }
+    public string? VoiceError { get; set; }
+    public string? VoiceRequestId { get; set; }
+
     /// <summary>Итог События: success, failure или interrupted — Событие прервано Срывом рейса.</summary>
     public string? Result { get; set; }
     public string? OutcomeStepId { get; set; }
@@ -75,6 +84,7 @@ public static class TripJournalKinds
 {
     public const string ProactiveChoice = "proactiveChoice";
     public const string Decision = "decision";
+    public const string VoiceAttempt = "voiceAttempt";
     public const string EventFinished = "eventFinished";
 }
 
@@ -110,6 +120,10 @@ internal static class TripModel
             entity.Property(row => row.OutcomeStepId).HasMaxLength(100);
             entity.Property(row => row.ScaleChanges).HasColumnType("jsonb");
             entity.Property(row => row.FlagsSet).HasColumnType("jsonb");
+            entity.Property(row => row.VoiceTranscript).HasColumnType("text");
+            entity.Property(row => row.VoiceChoice).HasMaxLength(100);
+            entity.Property(row => row.VoiceError).HasMaxLength(80);
+            entity.Property(row => row.VoiceRequestId).HasMaxLength(200);
         });
     }
 }
