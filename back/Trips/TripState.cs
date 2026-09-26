@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Text.Json.Serialization;
 using TurboSquadApp.Events;
 
 namespace TurboSquadApp.Trips;
@@ -18,6 +19,7 @@ public sealed record TimeOut : TripAction;
 /// <summary>Проактивный выбор между Событиями: задаёт порядок следующих Событий.</summary>
 public sealed record ChooseProactive(string OptionId) : TripAction;
 
+[JsonConverter(typeof(CamelCaseEnumConverter<TripStatus>))]
 public enum TripStatus { NotStarted, Running, Arrived, Failed }
 
 /// <summary>Чего Рейс ждёт от проводника: реакции на Шаг События или Проактивного выбора.</summary>
@@ -75,6 +77,7 @@ public enum FailureCause { CriticalError, Scale }
 /// <summary>Срыв рейса: Критическая ошибка или обязательная Шкала Scale дошла до порога.</summary>
 public sealed record TripFailure(FailureCause Cause, string? Scale = null);
 
+[JsonConverter(typeof(CamelCaseEnumConverter<EventResult>))]
 public enum EventResult { Success, Failure, Interrupted }
 
 /// <summary>Запись журнала Рейса.</summary>

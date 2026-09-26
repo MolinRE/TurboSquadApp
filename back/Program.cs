@@ -15,6 +15,7 @@ using TurboSquadApp.Data;
 using Microsoft.AspNetCore.Identity;
 using TurboSquadApp.Events;
 using TurboSquadApp.Content;
+using TurboSquadApp.Trips;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -52,6 +53,8 @@ builder.Services.AddScoped<RegistrationService>();
 builder.Services.AddScoped<LoginService>();
 builder.Services.AddScoped<DemoAccountSeeder>();
 builder.Services.AddScoped<ContentSeeder>();
+builder.Services.AddScoped<TripService>();
+builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<IPasswordHasher<AppUser>, PasswordHasher<AppUser>>();
 
 var app = builder.Build();
@@ -159,6 +162,7 @@ app.MapGet("/api/auth/role-check/methodologist", () => Results.Ok(new { Role = U
     .Produces(StatusCodes.Status403Forbidden);
 
 app.MapEventEndpoints();
+app.MapTripEndpoints();
 
 app.Run();
 

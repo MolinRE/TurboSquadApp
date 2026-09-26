@@ -12,6 +12,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<ScaleRecord> Scales => Set<ScaleRecord>();
     public DbSet<ServiceClassRecord> ServiceClasses => Set<ServiceClassRecord>();
     public DbSet<TripSettingsRecord> TripSettings => Set<TripSettingsRecord>();
+    public DbSet<TripRecord> Trips => Set<TripRecord>();
+    public DbSet<TripJournalRecord> TripJournal => Set<TripJournalRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -60,6 +62,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         });
 
         ContentModel.Configure(modelBuilder);
+        TripModel.Configure(modelBuilder);
         SeedOrganization(modelBuilder);
     }
 

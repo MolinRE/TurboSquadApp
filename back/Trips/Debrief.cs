@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace TurboSquadApp.Trips;
 
 /// <summary>
@@ -6,6 +8,7 @@ namespace TurboSquadApp.Trips;
 /// </summary>
 public sealed record Debrief(TripStatus Result, string Summary, IReadOnlyList<DebriefItem> Items)
 {
+    [JsonIgnore]
     public IEnumerable<DebriefEvent> Events => Items.OfType<DebriefEvent>();
 
     public static Debrief Build(TripState state)
@@ -39,7 +42,7 @@ public sealed record Debrief(TripStatus Result, string Summary, IReadOnlyList<De
     }
 
     /// <summary>Итог Рейса одной фразой.</summary>
-    private static string SummaryOf(TripState state)
+    internal static string SummaryOf(TripState state)
     {
         if (state.Failure is not { } failure) return "Прибытие: все запланированные События пройдены";
         if (failure.Cause == FailureCause.CriticalError)
@@ -67,6 +70,9 @@ public sealed record Debrief(TripStatus Result, string Summary, IReadOnlyList<De
     }
 }
 
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
+[JsonDerivedType(typeof(DebriefProactiveChoice), "proactiveChoice")]
+[JsonDerivedType(typeof(DebriefEvent), "event")]
 public abstract record DebriefItem;
 
 public sealed record DebriefProactiveChoice(string Situation, string Choice) : DebriefItem;
