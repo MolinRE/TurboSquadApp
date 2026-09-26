@@ -10,6 +10,7 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using TurboSquadApp.Data;
 using Microsoft.AspNetCore.Identity;
+using TurboSquadApp.Events;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -117,6 +118,8 @@ app.MapGet("/weatherforecast", () =>
         return forecast;
     })
     .WithName("GetWeatherForecast");
+
+app.MapEventEndpoints();
 
 app.Run();
 
