@@ -25,7 +25,7 @@
 - **Шрифт:** Manrope через `next/font/google`. Фирменный MoscowSans Московского транспорта не подключён: лицензия не проверена.
 - **Цифры** в колонках и счётчиках: `tabular-nums`.
 
-Откуда цвета: палитра выкачана из CSS vsm400.ru, красный и оранжевый — transport.mos.ru и mosmetro.ru. Эскиз, на котором стиль согласовывали: https://claude.ai/artifact/MpZVzEx7VZU2WQW7157oef.
+Откуда цвета: палитра выкачана из CSS vsm400.ru, красный и оранжевый — transport.mos.ru и mosmetro.ru. Эскиз, на котором стиль согласовывали: [etalon.html](etalon.html) (открывается двойным кликом; опубликованная копия — https://claude.ai/artifact/MpZVzEx7VZU2WQW7157oef).
 
 ## Шаблоны страниц
 
