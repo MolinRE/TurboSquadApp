@@ -1,0 +1,25 @@
+{
+  "shiftStartEvent": "zastup",
+  "eventsAfterShiftStart": 2,
+  "proactiveChoice": {
+    "situation": "Поезд отправился. Чем займётесь?",
+    "options": [
+      {
+        "id": "obhod",
+        "text": "Пройти по вагонам",
+        "pool": [
+          "sit-06",
+          "sit-33"
+        ]
+      },
+      {
+        "id": "tech",
+        "text": "Проверить техническое",
+        "pool": [
+          "sit-33",
+          "sit-06"
+        ]
+      }
+    ]
+  }
+}

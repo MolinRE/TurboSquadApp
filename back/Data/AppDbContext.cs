@@ -8,6 +8,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<Depot> Depots => Set<Depot>();
     public DbSet<Brigade> Brigades => Set<Brigade>();
     public DbSet<AppUserRole> UserRoles => Set<AppUserRole>();
+    public DbSet<EventDocumentRecord> EventDocuments => Set<EventDocumentRecord>();
+    public DbSet<ScaleRecord> Scales => Set<ScaleRecord>();
+    public DbSet<ServiceClassRecord> ServiceClasses => Set<ServiceClassRecord>();
+    public DbSet<TripSettingsRecord> TripSettings => Set<TripSettingsRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -55,6 +59,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
+        ContentModel.Configure(modelBuilder);
         SeedOrganization(modelBuilder);
     }
 
