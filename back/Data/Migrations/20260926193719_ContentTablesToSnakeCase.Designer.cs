@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using TurboSquadApp.Data;
@@ -11,9 +12,11 @@ using TurboSquadApp.Data;
 namespace TurboSquadApp.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260926193719_ContentTablesToSnakeCase")]
+    partial class ContentTablesToSnakeCase
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -290,160 +293,6 @@ namespace TurboSquadApp.Data.Migrations
                     b.ToTable("service_classes", (string)null);
                 });
 
-            modelBuilder.Entity("TurboSquadApp.Data.TripJournalRecord", b =>
-                {
-                    b.Property<Guid>("TripId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("trip_id");
-
-                    b.Property<int>("Seq")
-                        .HasColumnType("integer")
-                        .HasColumnName("seq");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<bool>("CriticalError")
-                        .HasColumnType("boolean")
-                        .HasColumnName("critical_error");
-
-                    b.Property<int?>("ElapsedMs")
-                        .HasColumnType("integer")
-                        .HasColumnName("elapsed_ms");
-
-                    b.Property<string>("EventId")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("event_id");
-
-                    b.Property<int?>("EventVersion")
-                        .HasColumnType("integer")
-                        .HasColumnName("event_version");
-
-                    b.Property<string>("FlagsSet")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("flags_set");
-
-                    b.Property<string>("Kind")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("kind");
-
-                    b.Property<string>("OptionId")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("option_id");
-
-                    b.Property<string>("OutcomeStepId")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("outcome_step_id");
-
-                    b.Property<string>("Result")
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("result");
-
-                    b.Property<string>("ScaleChanges")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("scale_changes");
-
-                    b.Property<string>("StepId")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("step_id");
-
-                    b.Property<bool>("TimedOut")
-                        .HasColumnType("boolean")
-                        .HasColumnName("timed_out");
-
-                    b.Property<string>("ToStepId")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("to_step_id");
-
-                    b.Property<string>("VariantId")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("variant_id");
-
-                    b.HasKey("TripId", "Seq")
-                        .HasName("pk_trip_journal");
-
-                    b.ToTable("trip_journal", (string)null);
-                });
-
-            modelBuilder.Entity("TurboSquadApp.Data.TripRecord", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<string>("Directory")
-                        .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("directory");
-
-                    b.Property<string>("EventVersions")
-                        .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("event_versions");
-
-                    b.Property<string>("FailureCause")
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("failure_cause");
-
-                    b.Property<string>("FailureScale")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasColumnName("failure_scale");
-
-                    b.Property<DateTimeOffset?>("FinishedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("finished_at");
-
-                    b.Property<string>("ServiceClass")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasColumnName("service_class");
-
-                    b.Property<string>("Settings")
-                        .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("settings");
-
-                    b.Property<DateTimeOffset>("StartedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("started_at");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("status");
-
-                    b.Property<DateTimeOffset>("StepStartedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("step_started_at");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("user_id");
-
-                    b.HasKey("Id")
-                        .HasName("pk_trips");
-
-                    b.HasIndex("UserId")
-                        .HasDatabaseName("ix_trips_user_id");
-
-                    b.ToTable("trips", (string)null);
-                });
-
             modelBuilder.Entity("TurboSquadApp.Data.TripSettingsRecord", b =>
                 {
                     b.Property<string>("Id")
@@ -505,26 +354,6 @@ namespace TurboSquadApp.Data.Migrations
                         .HasConstraintName("fk_brigades_depots_depot_id");
 
                     b.Navigation("Depot");
-                });
-
-            modelBuilder.Entity("TurboSquadApp.Data.TripJournalRecord", b =>
-                {
-                    b.HasOne("TurboSquadApp.Data.TripRecord", null)
-                        .WithMany()
-                        .HasForeignKey("TripId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_trip_journal_trips_trip_id");
-                });
-
-            modelBuilder.Entity("TurboSquadApp.Data.TripRecord", b =>
-                {
-                    b.HasOne("TurboSquadApp.Data.AppUser", null)
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_trips_users_user_id");
                 });
 
             modelBuilder.Entity("TurboSquadApp.Data.AppUser", b =>
