@@ -146,7 +146,7 @@ public class EventValidatorTests
     }
 
     [Fact]
-    public void Last_transition_with_conditions_is_an_error_because_of_possible_dead_end()
+    public void All_transitions_with_conditions_is_an_error_because_of_possible_dead_end()
     {
         var ev = ValidEvent();
         Variant(ev, "s1", "b")["transitions"] = JsonNode.Parse("""
