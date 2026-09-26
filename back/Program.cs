@@ -11,6 +11,7 @@ using System.Text;
 using TurboSquadApp.Data;
 using Microsoft.AspNetCore.Identity;
 using TurboSquadApp.Events;
+using TurboSquadApp.Content;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -42,6 +43,7 @@ builder.Services.AddScoped<DatabaseSession>();
 builder.Services.AddScoped<RegistrationService>();
 builder.Services.AddScoped<LoginService>();
 builder.Services.AddScoped<DemoAccountSeeder>();
+builder.Services.AddScoped<ContentSeeder>();
 builder.Services.AddSingleton<IPasswordHasher<AppUser>, PasswordHasher<AppUser>>();
 
 var app = builder.Build();
@@ -55,6 +57,22 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Стартовый контент Рейса (справочники, Заступ, №6, №33): добавляется только недостающее.
+if (app.Configuration.GetValue("ContentSeed:SeedOnStartup", true))
+{
+    await using var scope = app.Services.CreateAsyncScope();
+    try
+    {
+        await scope.ServiceProvider.GetRequiredService<ContentSeeder>().SeedAsync(CancellationToken.None);
+    }
+    catch (Npgsql.PostgresException ex) when (ex.SqlState == Npgsql.PostgresErrorCodes.UndefinedTable)
+    {
+        throw new InvalidOperationException(
+            "В базе нет таблиц контента: примените миграции (dotnet ef database update --project back) " +
+            "или отключите засев: ContentSeed__SeedOnStartup=false.", ex);
+    }
+}
 
 if (app.Configuration.GetValue("DemoAccounts:SeedOnStartup", false))
 {
