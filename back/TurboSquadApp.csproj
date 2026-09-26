@@ -7,12 +7,26 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <PackageReference Include="EFCore.NamingConventions" Version="10.0.1" />
         <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.11" />
         <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.0" PrivateAssets="all" />
         <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="10.0.0" PrivateAssets="all" />
         <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
         <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.1" />
         <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" Version="10.0.1" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- Исключаем папки из компиляции и отображения в IDE -->
+        <Compile Remove="**/BuildHost-net472/**" />
+        <None Remove="**/BuildHost-net472/**" />
+        <Content Remove="**/BuildHost-net472/**" />
+        <EmbeddedResource Remove="**/BuildHost-net472/**" />
+
+        <Compile Remove="**/config/**" />
+        <None Remove="**/config/**" />
+        <Content Remove="**/config/**" />
+        <EmbeddedResource Remove="**/config/**" />
     </ItemGroup>
 
 </Project>
