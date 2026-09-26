@@ -1,0 +1,577 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Эталонные экраны Турбо-Бригады</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap">
+<style>
+  :root {
+    color-scheme: light;
+    --ground: #E2E0DC;
+    --app-bg: #ECEBEA;
+    --card: #FFFFFF;
+    --ink: #2E354B;
+    --ink-deep: #142033;
+    --ink-2: #5E6476;
+    --ink-3: #8C91A0;
+    --line: #E2E2E2;
+    --line-2: #D9D9D9;
+    --teal: #038681;
+    --teal-2: #54AEA4;
+    --teal-soft: #E0F0EE;
+    --red: #DA2032;
+    --red-soft: #FBE3E5;
+    --orange: #FF6803;
+    --orange-ink: #A84300;
+    --orange-soft: #FFE8D9;
+    --bezel: #1B2030;
+    --sidebar-hover: #3A4259;
+
+    --heat-1-bg: #F6C9CD; --heat-1-ink: #8E0F1B;
+    --heat-2-bg: #FFDCC4; --heat-2-ink: #8A3800;
+    --heat-3-bg: #D7EDEA; --heat-3-ink: #0B5B57;
+    --heat-4-bg: #9ED2CB; --heat-4-ink: #053F3B;
+    --heat-low-bg: #E4E4E6; --heat-low-ink: #9A9EAA;
+
+    --r-card: 15px;
+    --font: "Manrope", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--font);
+    font-size: 15px;
+    line-height: 1.45;
+    padding-inline: 16px;
+    -webkit-font-smoothing: antialiased;
+  }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  button:focus-visible { outline: 2px solid var(--teal-2); outline-offset: 2px; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* ---------- page ---------- */
+  .wrap { max-width: 1180px; margin: 0 auto; padding-block: 40px 72px; display: grid; gap: 48px; }
+  .intro { display: grid; gap: 24px; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); align-items: start; }
+  @media (max-width: 860px) { .intro { grid-template-columns: 1fr; } }
+  .kicker { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--teal); }
+  h1 { font-size: clamp(28px, 4vw, 40px); line-height: 1.1; font-weight: 800; letter-spacing: -.02em; margin: 8px 0 12px; text-wrap: balance; }
+  .lead { max-width: 60ch; color: var(--ink-2); margin: 0; }
+  .lead + .lead { margin-top: 8px; }
+  .check { background: var(--card); border-radius: var(--r-card); padding: 20px 22px; }
+  .check h2 { font-size: 15px; font-weight: 800; margin: 0 0 10px; }
+  .check ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; color: var(--ink-2); }
+  .check li::marker { color: var(--teal); }
+
+  .swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 10px; }
+  .sw { background: var(--card); border-radius: 12px; padding: 8px; display: grid; gap: 8px; }
+  .sw-chip { height: 44px; border-radius: 8px; border: 1px solid rgba(46,53,75,.08); }
+  .sw-name { font-size: 12.5px; font-weight: 700; line-height: 1.2; }
+  .sw-hex { font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+
+  .stage-title { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; margin-bottom: 18px; }
+  .stage-title h2 { font-size: 20px; font-weight: 800; margin: 0; letter-spacing: -.01em; }
+  .stage-title span { color: var(--ink-2); font-size: 14px; }
+
+  .phones { display: flex; flex-wrap: wrap; gap: 40px; align-items: flex-start; }
+  figure { margin: 0; display: grid; gap: 12px; width: min(376px, 100%); }
+  figcaption { font-size: 13px; color: var(--ink-2); }
+  figcaption b { color: var(--ink); font-weight: 700; }
+
+  /* ---------- phone ---------- */
+  .phone { width: 100%; background: var(--bezel); border-radius: 46px; padding: 10px; box-shadow: 0 40px 60px -40px rgba(20,32,51,.55); }
+  .screen { background: var(--app-bg); border-radius: 36px; overflow: hidden; min-height: 780px; display: flex; flex-direction: column; }
+  .status { display: flex; justify-content: space-between; align-items: center; padding: 14px 26px 6px; font-size: 13px; font-weight: 700; color: var(--ink-deep); }
+  .status svg { width: 38px; height: 12px; }
+  .scr { flex: 1; display: flex; flex-direction: column; gap: 12px; padding: 8px 14px 16px; }
+
+  .card { background: var(--card); border-radius: var(--r-card); padding: 14px 16px; }
+  .eyebrow { font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3); }
+  .row-between { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .muted-sm { font-size: 12.5px; color: var(--ink-2); }
+  .icon { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* home */
+  .home-head { display: flex; justify-content: space-between; align-items: center; padding: 2px 2px 4px; }
+  .who { display: flex; gap: 10px; align-items: center; }
+  .avatar { width: 40px; height: 40px; border-radius: 50%; background: var(--ink); color: #fff; display: grid; place-items: center; font-weight: 800; font-size: 14px; }
+  .name { font-weight: 800; font-size: 15px; line-height: 1.2; }
+  .sub { font-size: 12.5px; color: var(--ink-2); }
+  .icon-btn { position: relative; width: 42px; height: 42px; border-radius: 50%; border: 0; background: var(--card); display: grid; place-items: center; color: var(--ink); }
+  .icon-btn .badge { position: absolute; top: 4px; right: 3px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px; background: var(--red); color: #fff; font-size: 10.5px; font-weight: 800; display: grid; place-items: center; border: 2px solid var(--app-bg); }
+
+  .rank-top { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; }
+  .rank-name { font-size: 18px; font-weight: 800; margin-top: 2px; }
+  .points { text-align: right; }
+  .points .big { display: block; font-size: 26px; font-weight: 800; line-height: 1; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .points .unit { font-size: 11.5px; color: var(--ink-2); }
+  .bar { height: 8px; border-radius: 4px; background: var(--app-bg); margin: 12px 0 8px; overflow: hidden; }
+  .bar > span { display: block; height: 100%; border-radius: 4px; background: var(--teal); }
+  .rank-foot { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+
+  .trip { background: var(--ink); color: #fff; padding: 16px; display: grid; gap: 12px; }
+  .trip .eyebrow { color: var(--teal-2); display: flex; align-items: center; gap: 6px; }
+  .trip .eyebrow .icon { width: 16px; height: 16px; }
+  .trip-route { font-size: 20px; font-weight: 800; letter-spacing: -.01em; line-height: 1.2; }
+  .line { display: flex; align-items: center; gap: 0; }
+  .line i { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--teal-2); flex: none; }
+  .line i.end { background: var(--teal-2); }
+  .line b { flex: 1; height: 2px; background: rgba(255,255,255,.22); }
+  .line-labels { display: flex; justify-content: space-between; font-size: 11px; color: rgba(255,255,255,.62); margin-top: -6px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip-dark { font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px; background: rgba(255,255,255,.1); }
+  .trip-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .trip-foot span { font-size: 12.5px; color: rgba(255,255,255,.72); max-width: 17ch; line-height: 1.3; }
+  .btn-teal { border: 0; background: var(--teal); color: #fff; font-weight: 700; font-size: 14.5px; padding: 11px 18px; border-radius: 12px; white-space: nowrap; }
+
+  .ch-title { font-weight: 800; font-size: 15.5px; margin: 6px 0 10px; line-height: 1.3; }
+  .segments { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-bottom: 10px; }
+  .segments i { height: 8px; border-radius: 4px; background: var(--app-bg); }
+  .segments i.on { background: var(--teal); }
+  .reward { font-size: 12.5px; font-weight: 700; color: var(--teal); white-space: nowrap; }
+
+  .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .tile { border: 0; background: var(--card); border-radius: var(--r-card); padding: 14px; text-align: left; display: grid; gap: 4px; align-content: start; }
+  .tile-ico { width: 36px; height: 36px; border-radius: 10px; background: var(--teal-soft); color: var(--teal); display: grid; place-items: center; margin-bottom: 6px; }
+  .tile-title { font-weight: 800; font-size: 14.5px; line-height: 1.2; }
+  .tile-sub { font-size: 12px; color: var(--ink-2); }
+  .section-label { padding: 4px 2px 0; }
+
+  .tabbar { display: grid; grid-template-columns: repeat(4, 1fr); background: var(--card); border-top: 1px solid var(--line); padding: 8px 6px 16px; }
+  .tab { display: grid; justify-items: center; gap: 3px; font-size: 11px; font-weight: 600; color: var(--ink-3); border: 0; background: none; padding: 4px 0; }
+  .tab.on { color: var(--ink); }
+  .tab.on .icon { stroke: var(--teal); }
+
+  /* game */
+  .game-top { display: grid; grid-template-columns: 42px 1fr 48px; align-items: center; gap: 8px; }
+  .step-meta { text-align: center; }
+  .step-title { font-weight: 800; font-size: 14.5px; }
+  .pips { display: flex; justify-content: center; gap: 4px; margin-top: 5px; }
+  .pips i { width: 22px; height: 4px; border-radius: 2px; background: var(--line-2); }
+  .pips i.done { background: var(--ink); }
+  .pips i.now { background: var(--teal); }
+  .timer { position: relative; width: 48px; height: 48px; }
+  .timer svg { width: 48px; height: 48px; transform: rotate(-90deg); }
+  .timer span { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 800; font-size: 15px; font-variant-numeric: tabular-nums; }
+
+  .scales { display: grid; gap: 12px; }
+  .scale-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  .scale-val { display: flex; align-items: baseline; gap: 6px; }
+  .scale-val b { font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .delta { font-style: normal; font-size: 11.5px; font-weight: 800; padding: 1px 6px; border-radius: 6px; font-variant-numeric: tabular-nums; }
+  .delta.neg { background: var(--red-soft); color: var(--red); }
+  .delta.pos { background: var(--teal-soft); color: var(--teal); }
+  .scale-bar { position: relative; height: 10px; border-radius: 5px; background: var(--app-bg); overflow: hidden; }
+  .scale-bar > span { position: absolute; inset: 0 auto 0 0; border-radius: 5px; }
+  .scale-bar.warn > span { background: var(--orange); }
+  .scale-bar.ok > span { background: var(--teal); }
+  .scale-bar > u { position: absolute; top: 0; bottom: 0; width: 2px; background: rgba(46,53,75,.25); }
+
+  .scene { display: grid; gap: 10px; padding: 2px 2px 0; }
+  .scene-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink-2); }
+  .chip { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px; background: var(--card); color: var(--ink); }
+  .brief { margin: 0; font-size: 14px; color: var(--ink-2); }
+  .bubble { background: var(--card); border-radius: 4px 16px 16px 16px; padding: 12px 14px; font-size: 15px; font-weight: 600; line-height: 1.4; }
+  .bubble-who { font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--teal); margin-bottom: 4px; }
+
+  .ask { font-size: 13px; font-weight: 700; color: var(--ink-2); padding: 4px 2px 0; }
+  .variants { display: grid; gap: 8px; }
+  .variant { border: 1.5px solid transparent; background: var(--card); border-radius: 13px; padding: 11px 14px; text-align: left; font-size: 14px; font-weight: 500; line-height: 1.35; }
+  .variant:hover { border-color: var(--teal-2); }
+
+  .voice { display: flex; align-items: center; gap: 12px; background: var(--card); border-radius: var(--r-card); padding: 10px 14px 10px 10px; margin-top: auto; }
+  .mic { width: 52px; height: 52px; border-radius: 50%; border: 0; background: var(--ink); color: #fff; display: grid; place-items: center; flex: none; box-shadow: 0 0 0 5px var(--teal-soft); }
+  .voice-title { font-weight: 800; font-size: 14.5px; }
+  .voice-sub { font-size: 12.5px; color: var(--ink-2); }
+
+  /* ---------- desktop ---------- */
+  .scroll-x { overflow-x: auto; border-radius: 14px; box-shadow: 0 40px 60px -44px rgba(20,32,51,.5); }
+  .browser { min-width: 1080px; background: var(--card); border-radius: 14px; overflow: hidden; }
+  .chrome { height: 38px; display: flex; align-items: center; gap: 14px; padding: 0 14px; background: #F4F3F2; border-bottom: 1px solid var(--line); }
+  .dots { display: flex; gap: 6px; }
+  .dots i { width: 10px; height: 10px; border-radius: 50%; background: var(--line-2); }
+  .url { flex: 1; max-width: 460px; height: 24px; border-radius: 6px; background: var(--card); font-size: 12px; color: var(--ink-3); display: flex; align-items: center; padding: 0 10px; }
+
+  .desk { display: grid; grid-template-columns: 236px 1fr; min-height: 760px; }
+  .side { background: var(--ink); color: #fff; padding: 18px 12px; display: flex; flex-direction: column; gap: 18px; }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 0 8px; font-weight: 800; font-size: 16px; }
+  .brand-mark { width: 30px; height: 30px; border-radius: 9px; background: var(--teal); display: grid; place-items: center; }
+  .brand-mark .icon { width: 18px; height: 18px; stroke: #fff; }
+  .role { margin: 0 4px; display: flex; justify-content: space-between; align-items: center; border: 0; background: var(--sidebar-hover); color: #fff; border-radius: 10px; padding: 9px 12px; font-size: 13px; font-weight: 600; text-align: left; }
+  .role small { display: block; font-size: 11px; color: rgba(255,255,255,.6); font-weight: 500; }
+  .nav-group { display: grid; gap: 2px; }
+  .nav-label { font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: rgba(255,255,255,.45); padding: 0 10px 6px; }
+  .nav { border: 0; background: none; color: rgba(255,255,255,.78); text-align: left; padding: 8px 10px; border-radius: 9px; font-size: 13.5px; font-weight: 500; display: flex; align-items: center; gap: 10px; }
+  .nav .icon { width: 18px; height: 18px; }
+  .nav:hover { background: var(--sidebar-hover); color: #fff; }
+  .nav.on { background: var(--card); color: var(--ink); font-weight: 700; }
+  .nav.on .icon { stroke: var(--teal); }
+  .side-foot { margin-top: auto; padding: 0 4px; }
+  .side-foot button { width: 100%; border: 1px dashed rgba(255,255,255,.3); background: none; color: rgba(255,255,255,.75); border-radius: 10px; padding: 8px 10px; font-size: 12.5px; text-align: left; }
+
+  .main { background: var(--app-bg); padding: 22px 26px 26px; display: grid; gap: 16px; align-content: start; }
+  .main-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+  .crumb { font-size: 12.5px; color: var(--ink-3); font-weight: 600; }
+  .main-head h3 { font-size: 26px; font-weight: 800; letter-spacing: -.02em; margin: 2px 0 0; }
+  .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .seg { display: flex; background: var(--card); border-radius: 10px; padding: 3px; }
+  .seg button { border: 0; background: none; font-size: 13px; font-weight: 600; color: var(--ink-2); padding: 6px 11px; border-radius: 8px; }
+  .seg button.on { background: var(--ink); color: #fff; }
+  .select { border: 0; background: var(--card); border-radius: 10px; padding: 8px 12px; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .select .icon { width: 14px; height: 14px; stroke: var(--ink-3); }
+
+  .insights { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .insight { background: var(--card); border-radius: 12px; padding: 12px 14px; display: flex; gap: 10px; font-size: 13.5px; line-height: 1.4; }
+  .insight::before { content: ""; flex: none; width: 9px; height: 9px; border-radius: 50%; margin-top: 5px; background: var(--c); }
+  .insight b { font-weight: 800; }
+
+  .heat-card { background: var(--card); border-radius: var(--r-card); padding: 16px 18px 14px; }
+  table.heat { border-collapse: separate; border-spacing: 4px; width: 100%; }
+  .heat th { font-size: 11.5px; font-weight: 700; color: var(--ink-2); text-align: center; vertical-align: bottom; padding: 0 2px 4px; line-height: 1.2; }
+  .heat th.group { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink); border-bottom: 2px solid var(--teal); padding-bottom: 5px; }
+  .heat th.group span { color: var(--teal); font-weight: 800; }
+  .heat th.rowh, .heat td.rowh { text-align: left; }
+  .heat td.rowh { font-size: 13.5px; font-weight: 700; padding-right: 10px; white-space: nowrap; }
+  .heat td.rowh small { display: block; font-size: 11px; font-weight: 600; color: var(--ink-3); }
+  .heat td.c { height: 40px; min-width: 62px; border-radius: 8px; text-align: center; font-weight: 800; font-size: 14px; font-variant-numeric: tabular-nums; }
+  .heat td.cov { font-size: 12.5px; font-weight: 700; color: var(--ink-2); text-align: center; font-variant-numeric: tabular-nums; }
+  .heat td.na { color: var(--ink-3); font-weight: 500; background: repeating-linear-gradient(135deg, transparent 0 6px, rgba(46,53,75,.05) 6px 7px); }
+  .heat td.sel { box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--ink); }
+  .h1 { background: var(--heat-1-bg); color: var(--heat-1-ink); }
+  .h2 { background: var(--heat-2-bg); color: var(--heat-2-ink); }
+  .h3 { background: var(--heat-3-bg); color: var(--heat-3-ink); }
+  .h4 { background: var(--heat-4-bg); color: var(--heat-4-ink); }
+  .hl { background: var(--heat-low-bg); color: var(--heat-low-ink); font-weight: 600 !important; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; margin-top: 10px; font-size: 12px; color: var(--ink-2); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { width: 14px; height: 14px; border-radius: 4px; display: inline-block; }
+
+  .below { display: grid; grid-template-columns: 1.5fr 1fr; gap: 12px; }
+  .drill { background: var(--card); border-radius: var(--r-card); padding: 14px 18px; }
+  .drill h4 { margin: 0 0 2px; font-size: 14.5px; font-weight: 800; }
+  .drill .muted-sm { margin-bottom: 8px; display: block; }
+  .drill ol { margin: 0; padding: 0; list-style: none; display: grid; }
+  .drill li { display: grid; grid-template-columns: 1fr auto; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 13.5px; }
+  .drill li small { display: block; color: var(--ink-3); font-size: 12px; }
+  .drill .pct { font-weight: 800; color: var(--red); font-variant-numeric: tabular-nums; align-self: center; }
+  .reco { background: var(--card); border-radius: var(--r-card); padding: 14px 18px; display: grid; gap: 6px; align-content: start; font-size: 13px; color: var(--ink-2); }
+  .reco b { color: var(--ink); font-size: 14px; font-weight: 800; display: flex; gap: 8px; align-items: center; }
+  .reco .icon { width: 18px; height: 18px; stroke: var(--teal); }
+
+  .note { font-size: 13px; color: var(--ink-2); max-width: 70ch; }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15L6 16Z"/><path d="M10 20.5a2.2 2.2 0 0 0 4 0"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V20H4v-9.5Z"/><path d="M10 20v-5h4v5"/></symbol>
+    <symbol id="i-games" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20c1.3-3.6 4-5.3 7.5-5.3s6.2 1.7 7.5 5.3"/></symbol>
+    <symbol id="i-cup" viewBox="0 0 24 24"><path d="M7 4h10v5a5 5 0 0 1-10 0V4Z"/><path d="M7 6H4.5v1.5A3 3 0 0 0 7.5 10.5M17 6h2.5v1.5a3 3 0 0 1-3 3"/><path d="M12 14v3M8.5 20h7M9.5 17h5"/></symbol>
+    <symbol id="i-train" viewBox="0 0 24 24"><path d="M5 15V8a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v7a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3Z"/><path d="M5 11h14"/><circle cx="9" cy="14.5" r=".6"/><circle cx="15" cy="14.5" r=".6"/><path d="m8 18-2 3M16 18l2 3"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3.5" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v2.5"/></symbol>
+    <symbol id="i-swipe" viewBox="0 0 24 24"><rect x="7" y="4" width="10" height="14" rx="2" transform="rotate(-8 12 11)"/><path d="M3 20h4M17 20h4M5 18l-2 2 2 2M19 18l2 2-2 2"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 3 5 13.5h6L10 21l8-10.5h-6L13 3Z"/></symbol>
+    <symbol id="i-heat" viewBox="0 0 24 24"><rect x="4" y="4" width="4.5" height="4.5" rx="1"/><rect x="9.8" y="4" width="4.5" height="4.5" rx="1"/><rect x="15.5" y="4" width="4.5" height="4.5" rx="1"/><rect x="4" y="9.8" width="4.5" height="4.5" rx="1"/><rect x="9.8" y="9.8" width="4.5" height="4.5" rx="1"/><rect x="15.5" y="9.8" width="4.5" height="4.5" rx="1"/><rect x="4" y="15.5" width="4.5" height="4.5" rx="1"/><rect x="9.8" y="15.5" width="4.5" height="4.5" rx="1"/><rect x="15.5" y="15.5" width="4.5" height="4.5" rx="1"/></symbol>
+    <symbol id="i-bars" viewBox="0 0 24 24"><path d="M5 20V11M10 20V5M15 20v-7M20 20V8"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M4 12.5 9 17.5 20 6.5"/></symbol>
+    <symbol id="i-pulse" viewBox="0 0 24 24"><path d="M3 12h4l2.5-6 5 12L17 12h4"/></symbol>
+    <symbol id="i-id" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M6 16c.6-1.5 1.6-2.2 3-2.2s2.4.7 3 2.2M14.5 10h3.5M14.5 13h3.5"/></symbol>
+    <symbol id="i-doc" viewBox="0 0 24 24"><path d="M7 3.5h7l4 4V20H7V3.5Z"/><path d="M14 3.5V8h4M10 12h5M10 15.5h5"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r=".8"/><circle cx="4.5" cy="12" r=".8"/><circle cx="4.5" cy="18" r=".8"/></symbol>
+    <symbol id="i-graph" viewBox="0 0 24 24"><circle cx="5.5" cy="12" r="2.2"/><circle cx="18.5" cy="6" r="2.2"/><circle cx="18.5" cy="18" r="2.2"/><path d="M7.5 11 16.4 7M7.5 13l8.9 4"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M5 5.5A2 2 0 0 1 7 3.5h12v14H7a2 2 0 0 0-2 2V5.5Z"/><path d="M5 19.5a2 2 0 0 0 2 2h12v-4"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8h.01"/></symbol>
+  </defs>
+</svg>
+
+<div class="wrap">
+
+  <header class="intro">
+    <div>
+      <div class="kicker">Турбо-Бригада · проверка стиля</div>
+      <h1>Эталонные экраны</h1>
+      <p class="lead">Три экрана, по одному на каждый шаблон: приложение проводника, игра и рабочее место. Если вместе они выглядят как один продукт, стиль утверждён, и из них вырезаются блоки для UI-kit.</p>
+      <p class="lead">Цвета взяты с vsm400.ru. Красный и оранжевый для Срыва и таймера взяты у Московского транспорта. Шрифт в эскизе — Manrope: MoscowSans грузится только с сервера Мосметро, а здесь разрешены лишь Google Fonts.</p>
+    </div>
+    <aside class="check">
+      <h2>Что оценить</h2>
+      <ul>
+        <li>Похожи ли три экрана на один продукт?</li>
+        <li>Узнаётся ли ВСМ: цвета, скругления, воздух?</li>
+        <li>Считывается ли главное за секунду: на Главной — Рейс дня, в игре — Шкалы и таймер, в аналитике — красная ячейка?</li>
+        <li>Что убрать или добавить на каждом экране?</li>
+      </ul>
+    </aside>
+  </header>
+
+  <section aria-label="Палитра">
+    <div class="swatches">
+      <div class="sw"><div class="sw-chip" style="background:#ECEBEA"></div><div><div class="sw-name">Фон</div><div class="sw-hex">#ECEBEA</div></div></div>
+      <div class="sw"><div class="sw-chip" style="background:#FFFFFF"></div><div><div class="sw-name">Карточка</div><div class="sw-hex">#FFFFFF</div></div></div>
+      <div class="sw"><div class="sw-chip" style="background:#2E354B"></div><div><div class="sw-name">Основной</div><div class="sw-hex">#2E354B</div></div></div>
+      <div class="sw"><div class="sw-chip" style="background:#038681"></div><div><div class="sw-name">Акцент</div><div class="sw-hex">#038681</div></div></div>
+      <div class="sw"><div class="sw-chip" style="background:#54AEA4"></div><div><div class="sw-name">Акцент светлый</div><div class="sw-hex">#54AEA4</div></div></div>
+      <div class="sw"><div class="sw-chip" style="background:#DA2032"></div><div><div class="sw-name">Опасно, Срыв</div><div class="sw-hex">#DA2032</div></div></div>
+      <div class="sw"><div class="sw-chip" style="background:#FF6803"></div><div><div class="sw-name">Внимание</div><div class="sw-hex">#FF6803</div></div></div>
+      <div class="sw"><div class="sw-chip" style="background:#E2E2E2"></div><div><div class="sw-name">Граница</div><div class="sw-hex">#E2E2E2</div></div></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="stage-title"><h2>Проводник</h2><span>телефон, два шаблона</span></div>
+    <div class="phones">
+
+      <!-- ===== Главная ===== -->
+      <figure>
+        <figcaption><b>Шаблон «Приложение»</b> · Главная</figcaption>
+        <div class="phone">
+          <div class="screen">
+            <div class="status"><span class="num">14:32</span><svg viewBox="0 0 38 12" aria-hidden="true"><rect x="0" y="8" width="3" height="4" rx="1" fill="#142033"/><rect x="5" y="5.5" width="3" height="6.5" rx="1" fill="#142033"/><rect x="10" y="3" width="3" height="9" rx="1" fill="#142033"/><rect x="15" y="0" width="3" height="12" rx="1" fill="#142033"/><rect x="22" y="1" width="14" height="10" rx="3" fill="none" stroke="#142033" stroke-width="1.4"/><rect x="24" y="3" width="8" height="6" rx="1.5" fill="#142033"/></svg></div>
+            <div class="scr">
+              <div class="home-head">
+                <div class="who">
+                  <div class="avatar">МС</div>
+                  <div><div class="name">Марина Соколова</div><div class="sub">Бригада 3 · Депо Санкт-Петербург</div></div>
+                </div>
+                <button type="button" class="icon-btn" aria-label="Уведомления: 2 новых"><svg class="icon"><use href="#i-bell"/></svg><span class="badge">2</span></button>
+              </div>
+
+              <section class="card">
+                <div class="rank-top">
+                  <div><div class="eyebrow">Звание</div><div class="rank-name">Старший проводник</div></div>
+                  <div class="points"><span class="big">1 240</span><span class="unit">Очки компетенций</span></div>
+                </div>
+                <div class="bar"><span style="width:83%"></span></div>
+                <div class="rank-foot"><span>До «Наставника» — 260 очков</span><span>1 500</span></div>
+              </section>
+
+              <section class="card trip">
+                <div class="eyebrow"><svg class="icon"><use href="#i-train"/></svg>Рейс дня · 26 сентября</div>
+                <div class="trip-route">Москва → Санкт-Петербург</div>
+                <div>
+                  <div class="line" aria-hidden="true"><i class="end"></i><b></b><i></i><b></b><i></i><b></b><i></i><b></b><i class="end"></i></div>
+                  <div class="line-labels" style="margin-top:6px"><span>Заступ</span><span>3 События</span><span>Прибытие</span></div>
+                </div>
+                <div class="chips"><span class="chip-dark">Бизнес-класс</span><span class="chip-dark">≈ 12 мин</span></div>
+                <div class="trip-foot"><span>Уже прошли 14 из 22 в бригаде</span><button type="button" class="btn-teal">Начать Рейс</button></div>
+              </section>
+
+              <section class="card">
+                <div class="row-between"><span class="eyebrow">Челлендж недели</span><span class="muted-sm">ещё 3 дня</span></div>
+                <div class="ch-title">3 События темы «Конфликты» без Срыва</div>
+                <div class="segments" aria-label="Выполнено 1 из 3"><i class="on"></i><i></i><i></i></div>
+                <div class="row-between"><span class="muted-sm">По вашей самой слабой Теме</span><span class="reward">+120 Сезонных очков</span></div>
+              </section>
+
+              <div class="eyebrow section-label">Тренировки</div>
+              <div class="tiles">
+                <button type="button" class="tile"><span class="tile-ico"><svg class="icon"><use href="#i-swipe"/></svg></span><span class="tile-title">Смена на свайпах</span><span class="tile-sub">20 Вопросов · ≈ 4 мин</span></button>
+                <button type="button" class="tile"><span class="tile-ico"><svg class="icon"><use href="#i-bolt"/></svg></span><span class="tile-title">Блиц</span><span class="tile-sub">На время, Темы вперемешку</span></button>
+              </div>
+            </div>
+            <nav class="tabbar" aria-label="Разделы">
+              <button type="button" class="tab on"><svg class="icon"><use href="#i-home"/></svg>Главная</button>
+              <button type="button" class="tab"><svg class="icon"><use href="#i-games"/></svg>Игры</button>
+              <button type="button" class="tab"><svg class="icon"><use href="#i-user"/></svg>Профиль</button>
+              <button type="button" class="tab"><svg class="icon"><use href="#i-cup"/></svg>Рейтинг</button>
+            </nav>
+          </div>
+        </div>
+      </figure>
+
+      <!-- ===== Шаг События ===== -->
+      <figure>
+        <figcaption><b>Шаблон «Игра»</b> · Шаг События в Рейсе</figcaption>
+        <div class="phone">
+          <div class="screen">
+            <div class="status"><span class="num">14:47</span><svg viewBox="0 0 38 12" aria-hidden="true"><rect x="0" y="8" width="3" height="4" rx="1" fill="#142033"/><rect x="5" y="5.5" width="3" height="6.5" rx="1" fill="#142033"/><rect x="10" y="3" width="3" height="9" rx="1" fill="#142033"/><rect x="15" y="0" width="3" height="12" rx="1" fill="#142033"/><rect x="22" y="1" width="14" height="10" rx="3" fill="none" stroke="#142033" stroke-width="1.4"/><rect x="24" y="3" width="7" height="6" rx="1.5" fill="#142033"/></svg></div>
+            <div class="scr">
+              <div class="game-top">
+                <button type="button" class="icon-btn" aria-label="Выйти из Рейса"><svg class="icon"><use href="#i-close"/></svg></button>
+                <div class="step-meta">
+                  <div class="step-title">Событие 2 из 3</div>
+                  <div class="pips" aria-hidden="true"><i class="done"></i><i class="now"></i><i></i></div>
+                </div>
+                <div class="timer" aria-label="Осталось 14 секунд">
+                  <svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="20" fill="#FFFFFF" stroke="#E2E2E2" stroke-width="4"/><circle cx="24" cy="24" r="20" fill="none" stroke="#038681" stroke-width="4" stroke-linecap="round" stroke-dasharray="125.66" stroke-dashoffset="37.7"/></svg>
+                  <span>14</span>
+                </div>
+              </div>
+
+              <section class="card scales" aria-label="Шкалы">
+                <div class="scale">
+                  <div class="scale-head"><span>Лояльность пассажира</span><span class="scale-val"><b>46</b><em class="delta neg">−8</em></span></div>
+                  <div class="scale-bar warn"><span style="width:46%"></span><u style="left:70%" title="Старт"></u></div>
+                </div>
+                <div class="scale">
+                  <div class="scale-head"><span>Рейтинг безопасности</span><span class="scale-val"><b>78</b><em class="delta pos">+4</em></span></div>
+                  <div class="scale-bar ok"><span style="width:78%"></span><u style="left:70%" title="Старт"></u></div>
+                </div>
+              </section>
+
+              <section class="scene">
+                <div class="scene-meta"><span class="chip">Конфликты</span><span>Вагон 5 · Бизнес · место 12А</span></div>
+                <p class="brief">Пассажир открыл коньяк прямо в салоне. Говорит громко, соседи оборачиваются.</p>
+                <div class="bubble"><div class="bubble-who">Пассажир</div>Да я тихонько! Праздник у меня, дочка родилась. Может, и вам налить?</div>
+              </section>
+
+              <div class="ask">Что ответите?</div>
+              <div class="variants">
+                <button type="button" class="variant">«Поздравляю Вас! Обращаю внимание: алкоголь можно только в вагоне-бистро. Давайте я Вас провожу»</button>
+                <button type="button" class="variant">Сообщить начальнику поезда по рации: «В пятом вагоне пьяный, подойдите»</button>
+                <button type="button" class="variant">«Уберите бутылку, иначе Вас высадят на ближайшей станции»</button>
+                <button type="button" class="variant">Промолчать: пассажир ведёт себя мирно</button>
+              </div>
+
+              <div class="voice">
+                <button type="button" class="mic" aria-label="Ответить голосом"><svg class="icon"><use href="#i-mic"/></svg></button>
+                <div><div class="voice-title">Ответить голосом</div><div class="voice-sub">Удерживайте и говорите своими словами</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </figure>
+
+    </div>
+  </section>
+
+  <section>
+    <div class="stage-title"><h2>Руководитель и Методист</h2><span>десктоп, шаблон «Рабочее место»</span></div>
+    <div class="scroll-x">
+      <div class="browser">
+        <div class="chrome"><div class="dots"><i></i><i></i><i></i></div><div class="url">turbo-brigada.local/analytics/blind-spots</div></div>
+        <div class="desk">
+          <aside class="side">
+            <div class="brand"><span class="brand-mark"><svg class="icon"><use href="#i-train"/></svg></span>Турбо-Бригада</div>
+            <button type="button" class="role"><span>Ольга Верещагина<small>Руководитель · Методист</small></span><svg class="icon" style="width:14px;height:14px"><use href="#i-chev"/></svg></button>
+            <div class="nav-group">
+              <div class="nav-label">Аналитика</div>
+              <button type="button" class="nav on"><svg class="icon"><use href="#i-heat"/></svg>Слепые зоны</button>
+              <button type="button" class="nav"><svg class="icon"><use href="#i-bars"/></svg>Успехи блоков</button>
+              <button type="button" class="nav"><svg class="icon"><use href="#i-check"/></svg>Качество контента</button>
+              <button type="button" class="nav"><svg class="icon"><use href="#i-pulse"/></svg>Вовлечённость</button>
+              <button type="button" class="nav"><svg class="icon"><use href="#i-id"/></svg>Карточки проводников</button>
+            </div>
+            <div class="nav-group">
+              <div class="nav-label">Контент</div>
+              <button type="button" class="nav"><svg class="icon"><use href="#i-doc"/></svg>Источники</button>
+              <button type="button" class="nav"><svg class="icon"><use href="#i-list"/></svg>Банк Вопросов</button>
+              <button type="button" class="nav"><svg class="icon"><use href="#i-graph"/></svg>События</button>
+              <button type="button" class="nav"><svg class="icon"><use href="#i-book"/></svg>Справочники</button>
+            </div>
+            <div class="side-foot"><button type="button">Демо: прокрутить день</button></div>
+          </aside>
+
+          <div class="main">
+            <div class="main-head">
+              <div><div class="crumb">Аналитика</div><h3>Слепые зоны</h3></div>
+              <div class="controls">
+                <div class="seg" role="group" aria-label="Уровень"><button type="button">Компания</button><button type="button">Депо</button><button type="button" class="on">Бригада</button><button type="button">Проводник</button></div>
+                <button type="button" class="select">Бригада 3 · Депо Санкт-Петербург<svg class="icon"><use href="#i-chev"/></svg></button>
+                <button type="button" class="select">4 недели<svg class="icon"><use href="#i-chev"/></svg></button>
+              </div>
+            </div>
+
+            <div class="insights">
+              <div class="insight" style="--c:var(--red)"><span>Бригада 3 проседает в <b>Решении (38%)</b> на Теме «Конфликты».</span></div>
+              <div class="insight" style="--c:var(--orange)"><span>Проактивность ниже 60% в <b>3 Темах из 7</b>.</span></div>
+              <div class="insight" style="--c:var(--ink-3)"><span>По Теме «Техника» мало данных: <b>Покрытие 12%</b>. Выводы не делаем.</span></div>
+            </div>
+
+            <div class="heat-card">
+              <table class="heat" id="heat">
+                <thead>
+                  <tr>
+                    <th class="rowh" rowspan="2" style="vertical-align:bottom">Тема</th>
+                    <th rowspan="2">Знание<br>регламента</th>
+                    <th rowspan="2">Скорость<br>реакции</th>
+                    <th class="group" colspan="5">Коммуникация <span>▾</span></th>
+                    <th rowspan="2">Проактив&shy;ность</th>
+                    <th rowspan="2">Покры&shy;тие</th>
+                  </tr>
+                  <tr><th>Вежли&shy;вость</th><th>Призна&shy;ние</th><th>Правило</th><th>Решение</th><th>Завере&shy;ние</th></tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+              <div class="legend">
+                <span>Доля освоенного от встреченного:</span>
+                <span><i class="h1"></i>&lt; 50%</span>
+                <span><i class="h2"></i>50–64%</span>
+                <span><i class="h3"></i>65–79%</span>
+                <span><i class="h4"></i>80% и выше</span>
+                <span><i class="hl"></i>мало данных</span>
+                <span><i style="border:1px solid var(--line-2);background:repeating-linear-gradient(135deg,transparent 0 3px,rgba(46,53,75,.12) 3px 4px)"></i>не оценивается</span>
+              </div>
+            </div>
+
+            <div class="below">
+              <section class="drill">
+                <h4>Конфликты × Решение</h4>
+                <span class="muted-sm">38% освоено · встречено 55 раз · худшие Шаги и Вопросы</span>
+                <ol>
+                  <li><span>«Нетрезвый пассажир», Шаг 2<small>Событие · проводят в бистро или спорят</small></span><span class="pct">22%</span></li>
+                  <li><span>«Два пассажира на одно место», Шаг 3<small>Событие · не предлагают пригласить начальника поезда</small></span><span class="pct">31%</span></li>
+                  <li><span>Громкий разговор по телефону в салоне<small>Вопрос · Блиц</small></span><span class="pct">40%</span></li>
+                </ol>
+              </section>
+              <aside class="reco">
+                <b><svg class="icon"><use href="#i-info"/></svg>Рекомендация</b>
+                <span>Решение принимает руководитель. Данные аналитики — подсказка для разговора с бригадой, а не основание для кадровых решений.</span>
+              </aside>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <p class="note">Что дальше: после утверждения из этих экранов вырезаются блоки (Шкала, Вариант ответа, таймер, карточка Челленджа, ячейка карты) и правила композиции, и всё это записывается в docs/ui-kit.</p>
+
+</div>
+
+<script>
+  (function () {
+    // null — не оценивается, строка "low" в конце — мало данных по Теме
+    var rows = [
+      ["Медпомощь",             [72, 58, 88, 81, null, 64, 79, 55], 64],
+      ["Пожарная безопасность", [81, 66, 84, 70, 86, 61, 74, 49], 71],
+      ["Техника",               [61, 74, 90, 77, 68, 59, 82, 70], 12, "low"],
+      ["Посадка и документы",   [88, 83, 86, 79, 91, 72, 85, 67], 83],
+      ["Сервис и питание",      [76, 71, 93, 88, 65, 70, 90, 73], 58],
+      ["Конфликты",             [61, 52, 74, 66, 71, 38, 63, 57], 69],
+      ["Допуск к смене",        [91, 87, null, null, null, null, null, 78], 90]
+    ];
+    function bucket(v) { return v < 50 ? "h1" : v < 65 ? "h2" : v < 80 ? "h3" : "h4"; }
+    var tbody = document.querySelector("#heat tbody");
+    rows.forEach(function (r) {
+      var tr = document.createElement("tr");
+      var th = document.createElement("td");
+      th.className = "rowh";
+      th.innerHTML = r[0] + (r[3] === "low" ? "<small>мало данных</small>" : "");
+      tr.appendChild(th);
+      r[1].forEach(function (v, i) {
+        var td = document.createElement("td");
+        if (v === null) { td.className = "c na"; td.textContent = "—"; }
+        else {
+          td.className = "c " + (r[3] === "low" ? "hl" : bucket(v));
+          td.textContent = v;
+          if (r[0] === "Конфликты" && i === 5) td.className += " sel";
+        }
+        tr.appendChild(td);
+      });
+      var cov = document.createElement("td");
+      cov.className = "cov";
+      cov.textContent = r[2] + "%";
+      tr.appendChild(cov);
+      tbody.appendChild(tr);
+    });
+  })();
+</script>
