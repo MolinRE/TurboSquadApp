@@ -1,4 +1,6 @@
 using System.Collections.Immutable;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using TurboSquadApp.Events;
 
 namespace TurboSquadApp.Trips;
@@ -18,6 +20,7 @@ public sealed record TimeOut : TripAction;
 /// <summary>Проактивный выбор между Событиями: задаёт порядок следующих Событий.</summary>
 public sealed record ChooseProactive(string OptionId) : TripAction;
 
+[JsonConverter(typeof(CamelCaseEnumConverter<TripStatus>))]
 public enum TripStatus { NotStarted, Running, Arrived, Failed }
 
 /// <summary>Чего Рейс ждёт от проводника: реакции на Шаг События или Проактивного выбора.</summary>
@@ -50,6 +53,9 @@ public sealed record TripState
     /// <summary>Журнал Рейса (ADR-0001): из него строится Разбор.</summary>
     public ImmutableList<JournalEntry> Journal { get; init; } = [];
 
+    /// <summary>Рейс закончился Прибытием или Срывом.</summary>
+    public bool IsFinished => Status is TripStatus.Arrived or TripStatus.Failed;
+
     /// <summary>Причина Срыва рейса; у идущего Рейса и Прибытия — null.</summary>
     public TripFailure? Failure { get; init; }
 
@@ -75,6 +81,7 @@ public enum FailureCause { CriticalError, Scale }
 /// <summary>Срыв рейса: Критическая ошибка или обязательная Шкала Scale дошла до порога.</summary>
 public sealed record TripFailure(FailureCause Cause, string? Scale = null);
 
+[JsonConverter(typeof(CamelCaseEnumConverter<EventResult>))]
 public enum EventResult { Success, Failure, Interrupted }
 
 /// <summary>Запись журнала Рейса.</summary>
@@ -95,3 +102,7 @@ public sealed record ScaleChange(string Scale, int Nominal, int Applied, int Bef
 
 /// <summary>Событие закончилось Исходом или прервано Срывом рейса (тогда без Исхода).</summary>
 public sealed record EventFinished(string EventId, int EventVersion, EventResult Result, string? OutcomeStepId) : JournalEntry;
+
+/// <summary>Перечисления движка в JSON — строками в camelCase: running, arrived, interrupted.</summary>
+public sealed class CamelCaseEnumConverter<TEnum>() : JsonStringEnumConverter<TEnum>(JsonNamingPolicy.CamelCase)
+    where TEnum : struct, Enum;
