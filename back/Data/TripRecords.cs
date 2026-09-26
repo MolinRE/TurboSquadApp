@@ -3,8 +3,9 @@ using Microsoft.EntityFrameworkCore;
 namespace TurboSquadApp.Data;
 
 /// <summary>
-/// Запись Рейса (PRD v7 §8): владелец, Класс обслуживания, версии Событий, зафиксированные на старте,
-/// итог и момент показа текущего Шага — от него сервер считает таймер.
+/// Запись Рейса (PRD v7 §8): владелец, Класс обслуживания, контент, зафиксированный на старте
+/// (справочники и настройка Рейса снимком, События — версиями), итог и момент показа текущего Шага —
+/// от него сервер считает таймер.
 /// </summary>
 public sealed class TripRecord
 {
@@ -18,6 +19,12 @@ public sealed class TripRecord
     /// <summary>Причина Срыва: criticalError или scale (тогда FailureScale — код Шкалы).</summary>
     public string? FailureCause { get; set; }
     public string? FailureScale { get; set; }
+
+    /// <summary>Снимок справочников Шкал и Классов на старте (jsonb): правка справочника не меняет идущие и прошлые Рейсы.</summary>
+    public string Directory { get; set; } = string.Empty;
+
+    /// <summary>Снимок настройки Рейса на старте (jsonb): Заступ, число Событий, Проактивный выбор.</summary>
+    public string Settings { get; set; } = string.Empty;
 
     /// <summary>id События → версия, которую играют в этом Рейсе (jsonb).</summary>
     public string EventVersions { get; set; } = string.Empty;
@@ -36,7 +43,7 @@ public sealed class TripJournalRecord
     public Guid TripId { get; set; }
     public int Seq { get; set; }
 
-    /// <summary>proactive_choice, decision или event_finished.</summary>
+    /// <summary>proactiveChoice, decision или eventFinished.</summary>
     public string Kind { get; set; } = string.Empty;
 
     public DateTimeOffset CreatedAt { get; set; }
@@ -66,9 +73,9 @@ public sealed class TripJournalRecord
 
 public static class TripJournalKinds
 {
-    public const string ProactiveChoice = "proactive_choice";
+    public const string ProactiveChoice = "proactiveChoice";
     public const string Decision = "decision";
-    public const string EventFinished = "event_finished";
+    public const string EventFinished = "eventFinished";
 }
 
 internal static class TripModel
@@ -84,6 +91,8 @@ internal static class TripModel
             entity.Property(trip => trip.Status).HasMaxLength(20).IsRequired();
             entity.Property(trip => trip.FailureCause).HasMaxLength(20);
             entity.Property(trip => trip.FailureScale).HasMaxLength(50);
+            entity.Property(trip => trip.Directory).HasColumnType("jsonb").IsRequired();
+            entity.Property(trip => trip.Settings).HasColumnType("jsonb").IsRequired();
             entity.Property(trip => trip.EventVersions).HasColumnType("jsonb").IsRequired();
         });
 

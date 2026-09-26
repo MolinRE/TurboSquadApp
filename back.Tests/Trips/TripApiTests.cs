@@ -2,6 +2,8 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
+using TurboSquadApp.Content;
+using TurboSquadApp.Data;
 
 namespace TurboSquadApp.Tests.Trips;
 
@@ -30,8 +32,7 @@ public class TripApiTests(TripApiFactory factory) : IClassFixture<TripApiFactory
             [("zastup", "success"), ("sit-06", "success"), ("sit-33", "success")],
             DebriefEvents(debrief).Select(e => ((string)e["eventId"]!, (string)e["result"]!)));
 
-        await using var db = factory.OpenDatabase();
-        var decisions = await db.TripJournal.Where(r => r.TripId == trip.Id && r.Kind == "decision").ToListAsync();
+        var decisions = await factory.Database(db => db.TripJournal.Where(r => r.TripId == trip.Id && r.Kind == "decision").ToListAsync());
         Assert.Equal(8, decisions.Count);
         Assert.All(decisions, d => Assert.Equal((1, false), (d.EventVersion, d.ElapsedMs is null)));
     }
@@ -55,11 +56,10 @@ public class TripApiTests(TripApiFactory factory) : IClassFixture<TripApiFactory
             [("zastup", "success"), ("sit-06", "failure"), ("sit-33", "interrupted")],
             DebriefEvents(debrief).Select(e => ((string)e["eventId"]!, (string)e["result"]!)));
 
-        await using var db = factory.OpenDatabase();
-        var record = await db.Trips.SingleAsync(t => t.Id == trip.Id);
+        var record = await factory.Database(db => db.Trips.SingleAsync(t => t.Id == trip.Id));
         Assert.Equal(("failed", "scale", "loyalty"), (record.Status, record.FailureCause, record.FailureScale));
         Assert.NotNull(record.FinishedAt);
-        var interrupted = await db.TripJournal.SingleAsync(r => r.TripId == trip.Id && r.Result == "interrupted");
+        var interrupted = await factory.Database(db => db.TripJournal.SingleAsync(r => r.TripId == trip.Id && r.Result == "interrupted"));
         Assert.Equal(("sit-33", 1), (interrupted.EventId, interrupted.EventVersion));
     }
 
@@ -94,16 +94,16 @@ public class TripApiTests(TripApiFactory factory) : IClassFixture<TripApiFactory
         await trip.Choose("a");                       // позже таймера больше чем на допуск: ветка таймаута
 
         Assert.Equal(("s2", 65, 85), (trip.StepId, trip.Scales.Loyalty, trip.Scales.Safety));
-        await using var db = factory.OpenDatabase();
-        var timedOut = await db.TripJournal.SingleAsync(r => r.TripId == trip.Id && r.EventId == "sit-33" && r.StepId == "s1");
+        var timedOut = await factory.Database(db =>
+            db.TripJournal.SingleAsync(r => r.TripId == trip.Id && r.EventId == "sit-33" && r.StepId == "s1"));
         Assert.Equal((true, null, 21500), (timedOut.TimedOut, timedOut.VariantId, timedOut.ElapsedMs));
     }
 
-    private static IEnumerable<JsonNode> DebriefEvents(JsonNode debrief) =>
+    internal static IEnumerable<JsonNode> DebriefEvents(JsonNode debrief) =>
         debrief["items"]!.AsArray().Where(i => (string)i!["kind"]! == "event").Select(i => i!);
 
     /// <summary>Рейс от имени нового Проводника: каждый ход — запрос к API, ответ — состояние Рейса.</summary>
-    private sealed class TripClient(HttpClient http, JsonNode json)
+    internal sealed class TripClient(HttpClient http, JsonNode json)
     {
         public JsonNode Json { get; private set; } = json;
 
@@ -153,5 +153,37 @@ public class TripApiTests(TripApiFactory factory) : IClassFixture<TripApiFactory
             Assert.True(response.IsSuccessStatusCode, $"{url}: {(int)response.StatusCode} {await response.Content.ReadAsStringAsync()}");
             return (await response.Content.ReadFromJsonAsync<JsonNode>())!;
         }
+    }
+}
+
+// Своя база: тест меняет опубликованный контент, другим Рейсам класса TripApiTests это бы помешало.
+public class TripContentPinningTests(TripApiFactory factory) : IClassFixture<TripApiFactory>
+{
+    [Fact]
+    public async Task Trip_keeps_content_it_started_with_when_content_changes_mid_trip()
+    {
+        var trip = await TripApiTests.TripClient.Start(factory, "business");
+        await trip.Choose("a", "a");
+
+        // Методист публикует №6 v2 и добавляет в пул Событие, которого в этом Рейсе нет.
+        var v2 = JsonNode.Parse(SeedContent.Events.Single(e => e.Document.Id == "sit-06").Json)!;
+        v2["version"] = 2;
+        v2["title"] = "Пассажир навеселе (v2)";
+        var settings = JsonNode.Parse(await factory.Database(db => db.TripSettings.Select(s => s.Document).SingleAsync()))!;
+        settings["proactiveChoice"]!["options"]![0]!["pool"]!.AsArray().Add("sit-99");
+        await factory.Database(db =>
+        {
+            db.EventDocuments.Add(new EventDocumentRecord { EventId = "sit-06", Version = 2, Document = v2.ToJsonString() });
+            db.TripSettings.Single().Document = settings.ToJsonString();
+            return db.SaveChangesAsync();
+        });
+
+        await trip.Proactive("obhod");
+        await trip.Choose("a", "a");                  // №6 той версии, с которой Рейс начат
+        await trip.Choose("a", "a", "b", "a");        // №33
+
+        Assert.Equal("arrived", trip.Status);
+        var sit06 = TripApiTests.DebriefEvents(await trip.Debrief()).Single(e => (string)e["eventId"]! == "sit-06");
+        Assert.Equal(("Пассажир с признаками алкогольного опьянения", 1), ((string)sit06["title"]!, (int)sit06["version"]!));
     }
 }

@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using TurboSquadApp.Events;
 
@@ -52,6 +53,9 @@ public sealed record TripState
     /// <summary>Журнал Рейса (ADR-0001): из него строится Разбор.</summary>
     public ImmutableList<JournalEntry> Journal { get; init; } = [];
 
+    /// <summary>Рейс закончился Прибытием или Срывом.</summary>
+    public bool IsFinished => Status is TripStatus.Arrived or TripStatus.Failed;
+
     /// <summary>Причина Срыва рейса; у идущего Рейса и Прибытия — null.</summary>
     public TripFailure? Failure { get; init; }
 
@@ -98,3 +102,7 @@ public sealed record ScaleChange(string Scale, int Nominal, int Applied, int Bef
 
 /// <summary>Событие закончилось Исходом или прервано Срывом рейса (тогда без Исхода).</summary>
 public sealed record EventFinished(string EventId, int EventVersion, EventResult Result, string? OutcomeStepId) : JournalEntry;
+
+/// <summary>Перечисления движка в JSON — строками в camelCase: running, arrived, interrupted.</summary>
+public sealed class CamelCaseEnumConverter<TEnum>() : JsonStringEnumConverter<TEnum>(JsonNamingPolicy.CamelCase)
+    where TEnum : struct, Enum;

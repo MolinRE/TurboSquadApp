@@ -21,6 +21,8 @@ namespace TurboSquadApp.Data.Migrations
                     status = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
                     failure_cause = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: true),
                     failure_scale = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: true),
+                    directory = table.Column<string>(type: "jsonb", nullable: false),
+                    settings = table.Column<string>(type: "jsonb", nullable: false),
                     event_versions = table.Column<string>(type: "jsonb", nullable: false),
                     started_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     finished_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),

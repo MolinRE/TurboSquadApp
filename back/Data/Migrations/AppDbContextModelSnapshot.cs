@@ -382,6 +382,11 @@ namespace TurboSquadApp.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<string>("Directory")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("directory");
+
                     b.Property<string>("EventVersions")
                         .IsRequired()
                         .HasColumnType("jsonb")
@@ -406,6 +411,11 @@ namespace TurboSquadApp.Data.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)")
                         .HasColumnName("service_class");
+
+                    b.Property<string>("Settings")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("settings");
 
                     b.Property<DateTimeOffset>("StartedAt")
                         .HasColumnType("timestamp with time zone")

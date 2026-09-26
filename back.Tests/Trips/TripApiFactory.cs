@@ -18,7 +18,7 @@ public sealed class TripApiFactory : WebApplicationFactory<Program>
     public TestClock Clock { get; } = new(DateTimeOffset.UtcNow);
 
     protected override void ConfigureWebHost(IWebHostBuilder builder) => builder
-        .UseSetting("Jwt:Key", "test-only-signing-key-at-least-32-characters")
+        .UseSetting("Jwt:Key", TestAppFactory.JwtKey)
         .UseSetting("ContentSeed:SeedOnStartup", "true")
         .ConfigureTestServices(services =>
         {
@@ -46,7 +46,12 @@ public sealed class TripApiFactory : WebApplicationFactory<Program>
         return client;
     }
 
-    public AppDbContext OpenDatabase() => Services.CreateScope().ServiceProvider.GetRequiredService<AppDbContext>();
+    /// <summary>Запрос к базе приложения напрямую: журнал Рейса и правка контента посреди Рейса.</summary>
+    public async Task<T> Database<T>(Func<AppDbContext, Task<T>> query)
+    {
+        await using var scope = Services.CreateAsyncScope();
+        return await query(scope.ServiceProvider.GetRequiredService<AppDbContext>());
+    }
 }
 
 /// <summary>Часы, которые двигает тест: серверный таймер Шага считает время по ним.</summary>

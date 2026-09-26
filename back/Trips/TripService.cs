@@ -8,19 +8,19 @@ namespace TurboSquadApp.Trips;
 
 /// <summary>
 /// Рейс через API (ADR-0001, PRD v7 §5.2): контент из базы, серверный таймер, движок, журнал в базе.
-/// Состояние Рейса отдельно не хранится: движок детерминирован и заново проигрывает журнал
-/// на контенте тех версий Событий, что зафиксированы на старте.
+/// Состояние Рейса отдельно не хранится: движок детерминирован и заново проигрывает журнал на контенте,
+/// зафиксированном на старте, — справочники и настройка Рейса снимком, События ссылками на версии.
 /// </summary>
-public sealed class TripService(AppDbContext db, TimeProvider clock)
+public sealed class TripService(AppDbContext dbContext, TimeProvider clock)
 {
     /// <summary>Допуск на задержку сети: ответ позже таймера больше чем на него засчитывается как таймаут.</summary>
     public static readonly TimeSpan TimerTolerance = TimeSpan.FromSeconds(1);
 
-    private static readonly JsonSerializerOptions Json = JsonSerializerOptions.Web;
+    private static readonly JsonSerializerOptions SnapshotJson = JsonSerializerOptions.Web;
 
-    public async Task<IResult> StartAsync(Guid userId, string serviceClass, CancellationToken ct)
+    public async Task<IResult> StartAsync(Guid userId, string serviceClass, CancellationToken cancellationToken)
     {
-        var content = await LoadContentAsync(versions: null, ct);
+        var content = await LatestContentAsync(cancellationToken);
         var result = TripEngine.Reduce(TripState.Initial, new StartTrip(content, serviceClass));
         if (result.Rejection is { } rejection) return Rejected(rejection.Reason.ToString(), rejection.Message);
 
@@ -30,65 +30,81 @@ public sealed class TripService(AppDbContext db, TimeProvider clock)
             Id = Guid.NewGuid(),
             UserId = userId,
             ServiceClass = serviceClass,
+            Directory = JsonSerializer.Serialize(content.Directory, SnapshotJson),
+            Settings = JsonSerializer.Serialize(content.Settings, EventJson.Options),
             EventVersions = JsonSerializer.Serialize(content.Events.ToDictionary(ev => ev.Id, ev => ev.Version)),
             StartedAt = now,
         };
-        db.Trips.Add(record);
-        Save(record, TripState.Initial, result.State, now);
-        await db.SaveChangesAsync(ct);
-        return Results.Created($"/api/trips/{record.Id}", TripView.Of(record.Id, result.State, record.StepStartedAt));
+        dbContext.Trips.Add(record);
+        AppendToJournal(record, TripState.Initial, result.State, now);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return Results.Created($"/api/trips/{record.Id}", View(record, result.State));
     }
 
-    public async Task<IResult> GetAsync(Guid userId, Guid tripId, CancellationToken ct)
+    public async Task<IResult> GetAsync(Guid userId, Guid tripId, CancellationToken cancellationToken)
     {
-        if (await LoadAsync(userId, tripId, ct) is not { } trip) return Results.NotFound();
-        return Results.Ok(TripView.Of(trip.Record.Id, trip.State, trip.Record.StepStartedAt));
+        if (await LoadAsync(userId, tripId, cancellationToken) is not { } trip) return Results.NotFound();
+        return Results.Ok(View(trip.Record, trip.State));
     }
 
     /// <summary>
     /// Ход проводника. Ответ позже таймера больше чем на допуск становится таймаутом;
     /// «время вышло» раньше срока отклоняется — таймер считает сервер, а не клиент.
     /// </summary>
-    public async Task<IResult> ActAsync(Guid userId, Guid tripId, TripAction action, CancellationToken ct)
+    public async Task<IResult> ActAsync(Guid userId, Guid tripId, TripAction action, CancellationToken cancellationToken)
     {
-        if (await LoadAsync(userId, tripId, ct) is not { } trip) return Results.NotFound();
+        if (await LoadAsync(userId, tripId, cancellationToken) is not { } trip) return Results.NotFound();
         var (record, state) = trip;
 
         var now = clock.GetUtcNow();
-        var expiresAt = TripView.ExpiresAt(state, record.StepStartedAt);
+        var expiresAt = ExpiresAt(record, state);
         if (action is ChooseVariant && now > expiresAt + TimerTolerance)
             action = new TimeOut();
-        else if (action is TimeOut && now < expiresAt - TimerTolerance)
+        else if (action is TimeOut && now < expiresAt)
             return Rejected("TimerNotExpired", $"Время Шага ещё не вышло: таймер истекает в {expiresAt:O}");
 
         var result = TripEngine.Reduce(state, action);
         if (result.Rejection is { } rejection) return Rejected(rejection.Reason.ToString(), rejection.Message);
 
-        Save(record, state, result.State, now);
-        await db.SaveChangesAsync(ct);
-        return Results.Ok(TripView.Of(record.Id, result.State, record.StepStartedAt));
+        AppendToJournal(record, state, result.State, now);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return Results.Ok(View(record, result.State));
     }
 
-    public async Task<IResult> DebriefAsync(Guid userId, Guid tripId, CancellationToken ct)
+    public async Task<IResult> DebriefAsync(Guid userId, Guid tripId, CancellationToken cancellationToken)
     {
-        if (await LoadAsync(userId, tripId, ct) is not { } trip) return Results.NotFound();
-        return trip.State.Status is TripStatus.Arrived or TripStatus.Failed
+        if (await LoadAsync(userId, tripId, cancellationToken) is not { } trip) return Results.NotFound();
+        return trip.State.IsFinished
             ? Results.Ok(Debrief.Build(trip.State))
             : Rejected("TripNotFinished", "Разбор строится после Рейса: Рейс ещё не закончен");
     }
+
+    private static TripView View(TripRecord record, TripState state) => TripView.Of(record.Id, state, ExpiresAt(record, state));
+
+    /// <summary>Таймер Шага идёт с момента, когда Шаг показан; у Шага без таймера — null.</summary>
+    private static DateTimeOffset? ExpiresAt(TripRecord record, TripState state) =>
+        state.CurrentStep?.TimerSec is { } seconds ? record.StepStartedAt.AddSeconds(seconds) : null;
 
     private static IResult Rejected(string reason, string message) => Results.Problem(
         title: "Действие отклонено", detail: message, statusCode: StatusCodes.Status409Conflict,
         extensions: new Dictionary<string, object?> { ["reason"] = reason });
 
-    private async Task<(TripRecord Record, TripState State)?> LoadAsync(Guid userId, Guid tripId, CancellationToken ct)
+    private async Task<(TripRecord Record, TripState State)?> LoadAsync(Guid userId, Guid tripId, CancellationToken cancellationToken)
     {
-        var record = await db.Trips.SingleOrDefaultAsync(trip => trip.Id == tripId && trip.UserId == userId, ct);
+        var record = await dbContext.Trips.SingleOrDefaultAsync(trip => trip.Id == tripId && trip.UserId == userId, cancellationToken);
         if (record is null) return null;
 
         var versions = JsonSerializer.Deserialize<Dictionary<string, int>>(record.EventVersions)!;
-        var content = await LoadContentAsync(versions, ct);
-        var journal = await db.TripJournal.Where(row => row.TripId == tripId).OrderBy(row => row.Seq).ToListAsync(ct);
+        var events = (await dbContext.EventDocuments.Where(r => versions.Keys.Contains(r.EventId)).ToListAsync(cancellationToken))
+            .Where(r => versions[r.EventId] == r.Version)
+            .Select(r => JsonSerializer.Deserialize<EventDocument>(r.Document, EventJson.Options)!)
+            .ToList();
+        var content = new TripContent(
+            JsonSerializer.Deserialize<ContentDirectory>(record.Directory, SnapshotJson)!,
+            events,
+            JsonSerializer.Deserialize<TripSettings>(record.Settings, EventJson.Options)!);
+
+        var journal = await dbContext.TripJournal.Where(row => row.TripId == tripId).OrderBy(row => row.Seq).ToListAsync(cancellationToken);
         return (record, Replay(content, record.ServiceClass, journal));
     }
 
@@ -113,22 +129,25 @@ public sealed class TripService(AppDbContext db, TimeProvider clock)
             : throw new InvalidOperationException($"Журнал Рейса не проигрывается: {result.Rejection.Message}");
     }
 
-    /// <summary>Новые записи журнала движка — в базу; итог Рейса и момент показа следующего Шага — в запись Рейса.</summary>
-    private void Save(TripRecord record, TripState before, TripState after, DateTimeOffset now)
+    /// <summary>
+    /// Новые записи журнала движка — строками в контекст базы; итог Рейса и момент показа следующего Шага — в запись Рейса.
+    /// Сохраняет вызывающий.
+    /// </summary>
+    private void AppendToJournal(TripRecord record, TripState before, TripState after, DateTimeOffset now)
     {
         var elapsedMs = (int)(now - record.StepStartedAt).TotalMilliseconds;
         var seq = before.Journal.Count;
         foreach (var entry in after.Journal.Skip(before.Journal.Count))
-            db.TripJournal.Add(Row(record.Id, ++seq, entry, elapsedMs, now));
+            dbContext.TripJournal.Add(JournalRow(record.Id, ++seq, entry, elapsedMs, now));
 
-        record.Status = JsonNamingPolicy.CamelCase.ConvertName(after.Status.ToString());
-        record.FailureCause = after.Failure is { } failure ? JsonNamingPolicy.CamelCase.ConvertName(failure.Cause.ToString()) : null;
+        record.Status = Code(after.Status);
+        record.FailureCause = after.Failure is { } failure ? Code(failure.Cause) : null;
         record.FailureScale = after.Failure?.Scale;
-        record.FinishedAt = after.Status is TripStatus.Arrived or TripStatus.Failed ? now : null;
+        record.FinishedAt = after.IsFinished ? now : null;
         record.StepStartedAt = now;
     }
 
-    private static TripJournalRecord Row(Guid tripId, int seq, JournalEntry entry, int elapsedMs, DateTimeOffset now) => entry switch
+    private static TripJournalRecord JournalRow(Guid tripId, int seq, JournalEntry entry, int elapsedMs, DateTimeOffset now) => entry switch
     {
         ProactiveChosen chosen => new()
         {
@@ -140,34 +159,36 @@ public sealed class TripService(AppDbContext db, TimeProvider clock)
             TripId = tripId, Seq = seq, CreatedAt = now, Kind = TripJournalKinds.Decision,
             EventId = decision.EventId, EventVersion = decision.EventVersion, StepId = decision.StepId,
             VariantId = decision.VariantId, TimedOut = decision.TimedOut, ElapsedMs = elapsedMs,
-            ScaleChanges = JsonSerializer.Serialize(decision.Changes, Json), FlagsSet = JsonSerializer.Serialize(decision.FlagsSet, Json),
+            ScaleChanges = JsonSerializer.Serialize(decision.Changes, SnapshotJson),
+            FlagsSet = JsonSerializer.Serialize(decision.FlagsSet, SnapshotJson),
             CriticalError = decision.CriticalError, ToStepId = decision.To,
         },
         EventFinished finished => new()
         {
             TripId = tripId, Seq = seq, CreatedAt = now, Kind = TripJournalKinds.EventFinished,
             EventId = finished.EventId, EventVersion = finished.EventVersion,
-            Result = JsonNamingPolicy.CamelCase.ConvertName(finished.Result.ToString()), OutcomeStepId = finished.OutcomeStepId,
+            Result = Code(finished.Result), OutcomeStepId = finished.OutcomeStepId,
         },
         _ => throw new ArgumentOutOfRangeException(nameof(entry), entry, "Неизвестная запись журнала"),
     };
 
-    /// <summary>Справочники и настройка Рейса — текущие; События — зафиксированных версий или последние опубликованные.</summary>
-    private async Task<TripContent> LoadContentAsync(IReadOnlyDictionary<string, int>? versions, CancellationToken ct)
+    /// <summary>Значение перечисления движка так же, как в JSON API: running, criticalError, interrupted.</summary>
+    private static string Code(Enum value) => JsonNamingPolicy.CamelCase.ConvertName(value.ToString());
+
+    /// <summary>Контент для нового Рейса: текущие справочники и настройка, последние опубликованные версии Событий.</summary>
+    private async Task<TripContent> LatestContentAsync(CancellationToken cancellationToken)
     {
-        var scales = await db.Scales.OrderBy(s => s.Code).ToListAsync(ct);
-        var classes = await db.ServiceClasses.OrderBy(c => c.SortOrder).ToListAsync(ct);
+        var scales = await dbContext.Scales.OrderBy(s => s.Code).ToListAsync(cancellationToken);
+        var classes = await dbContext.ServiceClasses.OrderBy(c => c.SortOrder).ToListAsync(cancellationToken);
         var directory = new ContentDirectory(
             scales.Select(s => new ScaleDefinition(s.Code, s.Name, s.Min, s.Max, s.Start, s.FailureThreshold, s.Mandatory, s.FailureReason)).ToList(),
             classes.Select(c => new ServiceClass(c.Code, c.Name, c.Description)).ToList());
 
-        var settings = await db.TripSettings.SingleAsync(s => s.Id == ContentSeeder.DefaultTripSettingsId, ct);
-
-        var records = await db.EventDocuments.ToListAsync(ct);
-        var played = versions is null
-            ? records.GroupBy(r => r.EventId).Select(g => g.MaxBy(r => r.Version)!)
-            : records.Where(r => versions.GetValueOrDefault(r.EventId) == r.Version);
-        var events = played.Select(r => JsonSerializer.Deserialize<EventDocument>(r.Document, EventJson.Options)!).ToList();
+        var settings = await dbContext.TripSettings.SingleAsync(s => s.Id == ContentSeeder.DefaultTripSettingsId, cancellationToken);
+        var events = (await dbContext.EventDocuments.ToListAsync(cancellationToken))
+            .GroupBy(r => r.EventId)
+            .Select(g => JsonSerializer.Deserialize<EventDocument>(g.MaxBy(r => r.Version)!.Document, EventJson.Options)!)
+            .ToList();
 
         return new TripContent(directory, events, JsonSerializer.Deserialize<TripSettings>(settings.Document, EventJson.Options)!);
     }

@@ -13,7 +13,7 @@ public sealed record Debrief(TripStatus Result, string Summary, IReadOnlyList<De
 
     public static Debrief Build(TripState state)
     {
-        if (state.Status is not (TripStatus.Arrived or TripStatus.Failed))
+        if (!state.IsFinished)
             throw new InvalidOperationException("Разбор строится после Рейса: Рейс ещё не закончен");
         var content = state.Content!;
 
