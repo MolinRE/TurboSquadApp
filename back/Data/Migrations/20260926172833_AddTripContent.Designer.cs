@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using TurboSquadApp.Data;
@@ -11,13 +12,15 @@ using TurboSquadApp.Data;
 namespace TurboSquadApp.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260926172833_AddTripContent")]
+    partial class AddTripContent
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.1")
+                .HasAnnotation("ProductVersion", "10.0.0")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -26,101 +29,81 @@ namespace TurboSquadApp.Data.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("BrigadeId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("brigade_id");
+                        .HasColumnType("uuid");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("DepotId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("depot_id");
+                        .HasColumnType("uuid");
 
                     b.Property<string>("DisplayName")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("display_name");
+                        .HasColumnType("character varying(200)");
 
                     b.Property<string>("NormalizedUsername")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("normalized_username");
+                        .HasColumnType("character varying(100)");
 
                     b.Property<string>("PasswordHash")
                         .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("password_hash");
+                        .HasColumnType("text");
 
                     b.Property<string>("Username")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("username");
+                        .HasColumnType("character varying(100)");
 
-                    b.HasKey("Id")
-                        .HasName("pk_users");
+                    b.HasKey("Id");
 
-                    b.HasIndex("BrigadeId")
-                        .HasDatabaseName("ix_users_brigade_id");
+                    b.HasIndex("BrigadeId");
 
-                    b.HasIndex("DepotId")
-                        .HasDatabaseName("ix_users_depot_id");
+                    b.HasIndex("DepotId");
 
                     b.HasIndex("NormalizedUsername")
-                        .IsUnique()
-                        .HasDatabaseName("ix_users_normalized_username");
+                        .IsUnique();
 
-                    b.ToTable("users", (string)null);
+                    b.ToTable("Users");
                 });
 
             modelBuilder.Entity("TurboSquadApp.Data.AppUserRole", b =>
                 {
                     b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("user_id");
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Role")
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasColumnName("role");
+                        .HasColumnType("character varying(50)");
 
-                    b.HasKey("UserId", "Role")
-                        .HasName("pk_user_roles");
+                    b.HasKey("UserId", "Role");
 
-                    b.ToTable("user_roles", (string)null);
+                    b.ToTable("UserRoles");
                 });
 
             modelBuilder.Entity("TurboSquadApp.Data.Brigade", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("DepotId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("depot_id");
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("name");
+                        .HasColumnType("character varying(200)");
 
-                    b.HasKey("Id")
-                        .HasName("pk_brigades");
+                    b.HasKey("Id");
 
-                    b.HasIndex("DepotId")
-                        .HasDatabaseName("ix_brigades_depot_id");
+                    b.HasIndex("DepotId");
 
-                    b.ToTable("brigades", (string)null);
+                    b.ToTable("Brigades");
 
                     b.HasData(
                         new
@@ -165,19 +148,16 @@ namespace TurboSquadApp.Data.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("name");
+                        .HasColumnType("character varying(200)");
 
-                    b.HasKey("Id")
-                        .HasName("pk_depots");
+                    b.HasKey("Id");
 
-                    b.ToTable("depots", (string)null);
+                    b.ToTable("Depots");
 
                     b.HasData(
                         new
@@ -292,15 +272,13 @@ namespace TurboSquadApp.Data.Migrations
                         .WithMany()
                         .HasForeignKey("BrigadeId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_users_brigades_brigade_id");
+                        .IsRequired();
 
                     b.HasOne("TurboSquadApp.Data.Depot", "Depot")
                         .WithMany()
                         .HasForeignKey("DepotId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_users_depots_depot_id");
+                        .IsRequired();
 
                     b.Navigation("Brigade");
 
@@ -313,8 +291,7 @@ namespace TurboSquadApp.Data.Migrations
                         .WithMany("Roles")
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_user_roles_users_user_id");
+                        .IsRequired();
 
                     b.Navigation("User");
                 });
@@ -325,8 +302,7 @@ namespace TurboSquadApp.Data.Migrations
                         .WithMany("Brigades")
                         .HasForeignKey("DepotId")
                         .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_brigades_depots_depot_id");
+                        .IsRequired();
 
                     b.Navigation("Depot");
                 });

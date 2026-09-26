@@ -29,4 +29,10 @@
         <EmbeddedResource Remove="**/config/**" />
     </ItemGroup>
 
+    <ItemGroup>
+        <!-- Стартовый контент Рейса: читается из ресурсов сборки, в publish отдельными файлами не нужен. -->
+        <Content Remove="Content/Seeds/*.json" />
+        <EmbeddedResource Include="Content/Seeds/*.json" />
+    </ItemGroup>
+
 </Project>

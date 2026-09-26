@@ -1,0 +1,53 @@
+{
+  "id": "zastup",
+  "version": 1,
+  "title": "Заступ на смену",
+  "topic": "Допуск к смене",
+  "categories": [
+    "Штатная"
+  ],
+  "source": "Заглушка: в «Ситуациях на борту» нет Темы «Допуск к смене»",
+  "conditions": [],
+  "start": "med",
+  "steps": [
+    {
+      "id": "med",
+      "answerType": "buttons",
+      "situation": "Медкомиссия перед рейсом.",
+      "variants": [
+        {
+          "id": "a",
+          "text": "Пройти медкомиссию",
+          "comment": "Заглушка: порядок медкомиссии в источнике не описан.",
+          "transitions": [
+            {
+              "to": "priemka"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "priemka",
+      "answerType": "buttons",
+      "situation": "Приёмка поезда перед отправлением.",
+      "variants": [
+        {
+          "id": "a",
+          "text": "Принять поезд",
+          "comment": "Заглушка: порядок приёмки поезда в источнике не описан.",
+          "transitions": [
+            {
+              "to": "dopusk"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dopusk",
+      "outcome": "success",
+      "situation": "Проводник допущен к рейсу."
+    }
+  ]
+}
