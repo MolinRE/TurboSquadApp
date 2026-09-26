@@ -53,9 +53,7 @@ public static class SeedContent
     /// <summary>Флаги, которые ставят остальные сиды: «Флаги между Событиями» внутри стартового контента.</summary>
     public static IReadOnlyCollection<string> FlagsSetElsewhere(string eventId) => Events
         .Where(seed => seed.Document.Id != eventId)
-        .SelectMany(seed => seed.Document.Steps)
-        .SelectMany(step => step.Reactions)
-        .SelectMany(reaction => reaction.SetsFlags ?? [])
+        .SelectMany(seed => seed.Document.FlagsSet)
         .ToHashSet();
 
     private static string ReadResource(string fileName)

@@ -230,11 +230,7 @@ public static class EventValidator
             Error(IssueLocation.Of(step), "Из Шага не достижим ни один Исход: петля без выхода", "ADR-0001");
 
         // Флаг проверяется, но его никто не ставит — почти всегда опечатка, ветка мертва.
-        var knownFlags = ev.Steps
-            .SelectMany(s => s.Reactions)
-            .SelectMany(r => r.SetsFlags ?? [])
-            .Concat(flagsSetElsewhere)
-            .ToHashSet();
+        var knownFlags = ev.FlagsSet.Concat(flagsSetElsewhere).ToHashSet();
         foreach (var (flag, location) in checkedFlags.Where(f => !knownFlags.Contains(f.Flag)))
             Warn(location, $"Флаг «{flag}» проверяется, но его не ставит ни один Вариант опубликованных Событий: ветка мертва (опечатка?)", "ADR-0001");
 

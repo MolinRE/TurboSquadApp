@@ -10,6 +10,8 @@ public sealed record ServiceClass(string Code, string Name, string Description);
 /// <summary>Справочники, против которых проверяются События.</summary>
 public sealed record ContentDirectory(IReadOnlyList<ScaleDefinition> Scales, IReadOnlyList<ServiceClass> Classes)
 {
+    public ScaleDefinition Scale(string code) => Scales.Single(s => s.Code == code);
+
     /// <summary>
     /// Стартовые справочники (PRD §5.3, §5.5, приложение Б): из них засеваются таблицы Шкал и Классов,
     /// по ним же валидатор проверяет События, пока эндпоинт не читает справочники из базы.
