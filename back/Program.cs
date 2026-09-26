@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using TurboSquadApp.Data;
+using Microsoft.AspNetCore.Identity;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -14,6 +15,8 @@ builder.Services.AddOpenApi();
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(PostgresConnection.Build(builder.Configuration)));
 builder.Services.AddScoped<DatabaseSession>();
+builder.Services.AddScoped<RegistrationService>();
+builder.Services.AddSingleton<IPasswordHasher<AppUser>, PasswordHasher<AppUser>>();
 
 var app = builder.Build();
 
@@ -24,6 +27,17 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+app.MapPost("/api/auth/register", async (
+    RegistrationRequest request,
+    RegistrationService registrationService,
+    CancellationToken cancellationToken) =>
+{
+    var result = await registrationService.RegisterConductorAsync(request, cancellationToken);
+    return result.IsValid
+        ? Results.Created($"/api/users/{result.Response!.Id}", result.Response)
+        : Results.ValidationProblem(result.Errors!);
+});
 
 var summaries = new[]
 {
