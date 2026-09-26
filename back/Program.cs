@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -39,6 +40,7 @@ builder.Services.AddAuthorization();
 builder.Services.AddScoped<DatabaseSession>();
 builder.Services.AddScoped<RegistrationService>();
 builder.Services.AddScoped<LoginService>();
+builder.Services.AddScoped<DemoAccountSeeder>();
 builder.Services.AddSingleton<IPasswordHasher<AppUser>, PasswordHasher<AppUser>>();
 
 var app = builder.Build();
@@ -52,6 +54,13 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
+
+if (app.Configuration.GetValue("DemoAccounts:SeedOnStartup", false))
+{
+    await using var scope = app.Services.CreateAsyncScope();
+    var seeder = scope.ServiceProvider.GetRequiredService<DemoAccountSeeder>();
+    await seeder.SeedAsync(CancellationToken.None);
+}
 
 app.MapPost("/api/auth/register", async (
     RegistrationRequest request,
@@ -74,6 +83,21 @@ app.MapPost("/api/auth/login", async (
         ? Results.Ok(result.Response)
         : Results.Unauthorized();
 });
+
+app.MapGet("/api/auth/me", (HttpContext context) =>
+    Results.Ok(new
+    {
+        UserId = context.User.FindFirstValue(ClaimTypes.NameIdentifier),
+        Username = context.User.Identity?.Name,
+        Roles = context.User.FindAll(ClaimTypes.Role).Select(claim => claim.Value).Distinct().ToArray()
+    }))
+    .RequireAuthorization();
+
+app.MapGet("/api/auth/role-check/manager", () => Results.Ok(new { Role = UserRoles.Manager }))
+    .RequireAuthorization(policy => policy.RequireRole(UserRoles.Manager));
+
+app.MapGet("/api/auth/role-check/methodologist", () => Results.Ok(new { Role = UserRoles.Methodologist }))
+    .RequireAuthorization(policy => policy.RequireRole(UserRoles.Methodologist));
 
 var summaries = new[]
 {

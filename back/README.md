@@ -12,3 +12,5 @@ dotnet ef database update --project back
 `DatabaseSession` uses `AppDbContext` directly. The project does not add Unit of Work or a generic repository.
 
 For authentication, set `Jwt__Key` to a random value of at least 32 characters. Optional settings are `Jwt__Issuer`, `Jwt__Audience`, and `Jwt__ExpirationMinutes` (1–1440, default 60). The login endpoint is `POST /api/auth/login` with `username` and `password`; it returns a Bearer token. Registration is available at `POST /api/auth/register`.
+
+To seed the three demo accounts, set `DemoAccounts__SeedOnStartup=true` and provide `DemoAccounts__conductor-star__Password`, `DemoAccounts__conductor-novice__Password`, and `DemoAccounts__manager-methodologist__Password`. The seed is idempotent and adds missing roles without replacing existing passwords. `GET /api/auth/me` requires authentication; the manager and methodologist role checks are available under `/api/auth/role-check/manager` and `/api/auth/role-check/methodologist`.
