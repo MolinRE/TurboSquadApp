@@ -180,7 +180,15 @@ public sealed class PolzaSttClient(HttpClient httpClient, VoiceOptions options) 
             if (!response.IsSuccessStatusCode)
                 return new(null, "SttProviderError", $"polza.ai вернул {(int)response.StatusCode}", response.Headers.TryGetValues("x-request-id", out var ids) ? ids.FirstOrDefault() : null);
 
-            var result = JsonSerializer.Deserialize<SttResponse>(body, JsonOptions);
+            SttResponse? result;
+            try
+            {
+                result = JsonSerializer.Deserialize<SttResponse>(body, JsonOptions);
+            }
+            catch (JsonException)
+            {
+                return new(null, "SttInvalidResponse", "polza.ai вернул некорректный JSON", null);
+            }
             return string.IsNullOrWhiteSpace(result?.Text)
                 ? new(null, "SttInvalidResponse", "polza.ai вернул ответ без текста", null)
                 : new(result.Text, null, null, response.Headers.TryGetValues("x-request-id", out var requestIds) ? requestIds.FirstOrDefault() : null);
@@ -235,7 +243,16 @@ public sealed class LayaClient(HttpClient httpClient, VoiceOptions options) : IL
             if (!response.IsSuccessStatusCode)
                 return new(null, null, "LayaProviderError", $"Laya вернула {(int)response.StatusCode}", null);
 
-            var result = JsonSerializer.Deserialize<LayaResponse>(body, JsonOptions)?.Answers?.Choice;
+            LayaResponse? responseBody;
+            try
+            {
+                responseBody = JsonSerializer.Deserialize<LayaResponse>(body, JsonOptions);
+            }
+            catch (JsonException)
+            {
+                return new(null, null, "LayaInvalidResponse", "Laya вернула некорректный JSON", null);
+            }
+            var result = responseBody?.Answers?.Choice;
             var confidence = result?.AnswerConfidence ?? result?.Confidence;
             return result is null
                 ? new(null, null, "LayaInvalidResponse", "Laya вернула пустой ответ", null)

@@ -71,7 +71,7 @@ export function TripGame() {
             Начать Рейс
           </Button>
           <p className="text-xs text-muted-foreground">
-            Для API нужен Bearer-токен в localStorage под ключом <code>turbo.accessToken</code>.
+            Перед началом войдите через страницу авторизации, чтобы получить доступ к Рейсу.
           </p>
         </CardContent>
       </Card>

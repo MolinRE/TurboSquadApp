@@ -63,6 +63,22 @@ public class VoiceClientTests
         Assert.Equal("Спокойно подойти", json.GetProperty("questions").GetProperty("choice").GetProperty("criteria").GetProperty("a").GetString());
     }
 
+    [Fact]
+    public async Task Malformed_provider_json_is_reported_as_invalid_response()
+    {
+        var handler = new CapturingHandler(_ => Json(HttpStatusCode.OK, "not-json"));
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("https://polza.test/api/v1/") };
+        var stt = new PolzaSttClient(http, new VoiceOptions { PolzaApiKey = "polza-test" });
+        await using var audio = new MemoryStream([1]);
+
+        var sttResult = await stt.TranscribeAsync(audio, "answer.wav", "audio/wav", CancellationToken.None);
+        Assert.Equal("SttInvalidResponse", sttResult.ErrorCode);
+
+        var laya = new LayaClient(http, new VoiceOptions { LayaToken = "laya-test", LayaEndpoint = "http://laya.test/v1/systemone" });
+        var layaResult = await laya.DecideAsync("Ситуация", null, "Ответ", [new VoiceQuestion("a", "Критерий")], CancellationToken.None);
+        Assert.Equal("LayaInvalidResponse", layaResult.ErrorCode);
+    }
+
     private static HttpResponseMessage Json(HttpStatusCode status, string body) => new(status)
     {
         Content = new StringContent(body, new System.Text.UTF8Encoding(false), "application/json")

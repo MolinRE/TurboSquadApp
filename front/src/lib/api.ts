@@ -40,6 +40,12 @@ type ApiErrorPayload = {
   attempt?: VoiceAttempt;
 };
 
+export type TokenResponse = {
+  accessToken: string;
+  tokenType: string;
+  expiresAt: string;
+};
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -48,6 +54,18 @@ export class ApiError extends Error {
   ) {
     super(message);
   }
+}
+
+export async function login(username: string, password: string): Promise<TokenResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
+  });
+  if (!response.ok) throw new ApiError("Неверный логин или пароль", response.status);
+  const result = (await response.json()) as TokenResponse;
+  window.localStorage.setItem("turbo.accessToken", result.accessToken);
+  return result;
 }
 
 const API_BASE_URL = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:5017").replace(/\/$/, "");
