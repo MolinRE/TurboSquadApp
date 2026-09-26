@@ -1,12 +1,15 @@
 using System;
 using System.Linq;
 using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.OpenApi;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi;
 using System.Text;
 using TurboSquadApp.Data;
 using Microsoft.AspNetCore.Identity;
@@ -16,7 +19,11 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-builder.Services.AddOpenApi();
+builder.Services.AddOpenApi(options =>
+{
+    options.AddDocumentTransformer<BearerSecuritySchemeTransformer>();
+    options.AddOperationTransformer<BearerSecurityRequirementTransformer>();
+});
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(PostgresConnection.Build(builder.Configuration)));
 var jwtOptions = JwtOptions.FromConfiguration(builder.Configuration);
@@ -135,3 +142,49 @@ app.MapGet("/api/auth/role-check/methodologist", () => Results.Ok(new { Role = U
 app.MapEventEndpoints();
 
 app.Run();
+
+sealed class BearerSecuritySchemeTransformer : IOpenApiDocumentTransformer
+{
+    public Task TransformAsync(
+        OpenApiDocument document,
+        OpenApiDocumentTransformerContext context,
+        CancellationToken cancellationToken)
+    {
+        document.Components ??= new OpenApiComponents();
+        document.Components.SecuritySchemes ??= new Dictionary<string, IOpenApiSecurityScheme>();
+        document.Components.SecuritySchemes["Bearer"] = new OpenApiSecurityScheme
+        {
+            Type = SecuritySchemeType.Http,
+            Scheme = "bearer",
+            In = ParameterLocation.Header,
+            BearerFormat = "JWT",
+            Description = "Введите JWT-токен без префикса Bearer."
+        };
+
+        return Task.CompletedTask;
+    }
+}
+
+sealed class BearerSecurityRequirementTransformer : IOpenApiOperationTransformer
+{
+    public Task TransformAsync(
+        OpenApiOperation operation,
+        OpenApiOperationTransformerContext context,
+        CancellationToken cancellationToken)
+    {
+        var endpointMetadata = context.Description.ActionDescriptor.EndpointMetadata;
+        if (endpointMetadata?.OfType<IAllowAnonymous>().Any() == true ||
+            endpointMetadata?.OfType<IAuthorizeData>().Any() != true)
+        {
+            return Task.CompletedTask;
+        }
+
+        operation.Security ??= [];
+        operation.Security.Add(new OpenApiSecurityRequirement
+        {
+            [new OpenApiSecuritySchemeReference("Bearer", context.Document)] = []
+        });
+
+        return Task.CompletedTask;
+    }
+}
