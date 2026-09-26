@@ -1,12 +1,15 @@
 using System;
 using System.Linq;
 using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.OpenApi;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi;
 using System.Text;
 using TurboSquadApp.Data;
 using Microsoft.AspNetCore.Identity;
@@ -17,7 +20,11 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-builder.Services.AddOpenApi();
+builder.Services.AddOpenApi(options =>
+{
+    options.AddDocumentTransformer<BearerSecuritySchemeTransformer>();
+    options.AddOperationTransformer<BearerSecurityRequirementTransformer>();
+});
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(PostgresConnection.Build(builder.Configuration)));
 var jwtOptions = JwtOptions.FromConfiguration(builder.Configuration);
@@ -52,6 +59,10 @@ var app = builder.Build();
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+    app.UseSwaggerUI(options =>
+    {
+        options.SwaggerEndpoint("/openapi/v1.json", "TurboSquadApp API v1");
+    });
 }
 
 app.UseHttpsRedirection();
@@ -90,7 +101,14 @@ app.MapPost("/api/auth/register", async (
     return result.IsValid
         ? Results.Created($"/api/users/{result.Response!.Id}", result.Response)
         : Results.ValidationProblem(result.Errors!);
-});
+})
+    .Accepts<RegistrationRequest>("application/json")
+    .Produces<RegistrationResponse>(StatusCodes.Status201Created)
+    .ProducesValidationProblem()
+    .WithName("RegisterConductor")
+    .WithSummary("Зарегистрировать Проводника")
+    .WithDescription("Создаёт учётную запись Проводника с выбранными Депо и Бригадой. Пароль принимается только для хеширования и никогда не возвращается.")
+    .AllowAnonymous();
 
 app.MapPost("/api/auth/login", async (
     LoginRequest request,
@@ -101,7 +119,14 @@ app.MapPost("/api/auth/login", async (
     return result.IsValid
         ? Results.Ok(result.Response)
         : Results.Unauthorized();
-});
+})
+    .Accepts<LoginRequest>("application/json")
+    .Produces<TokenResponse>()
+    .Produces(StatusCodes.Status401Unauthorized)
+    .WithName("Login")
+    .WithSummary("Войти и получить токен")
+    .WithDescription("Проверяет логин и пароль и возвращает Bearer-токен для защищённых API-методов. Ошибки входа не раскрывают причину отказа.")
+    .AllowAnonymous();
 
 app.MapGet("/api/auth/me", (HttpContext context) =>
     Results.Ok(new
@@ -110,38 +135,74 @@ app.MapGet("/api/auth/me", (HttpContext context) =>
         Username = context.User.Identity?.Name,
         Roles = context.User.FindAll(ClaimTypes.Role).Select(claim => claim.Value).Distinct().ToArray()
     }))
-    .RequireAuthorization();
+    .RequireAuthorization()
+    .WithName("GetCurrentUser")
+    .WithSummary("Получить текущего пользователя")
+    .WithDescription("Возвращает идентификатор, логин и роли пользователя из проверенного Bearer-токена.")
+    .Produces(StatusCodes.Status401Unauthorized);
 
 app.MapGet("/api/auth/role-check/manager", () => Results.Ok(new { Role = UserRoles.Manager }))
-    .RequireAuthorization(policy => policy.RequireRole(UserRoles.Manager));
+    .RequireAuthorization(policy => policy.RequireRole(UserRoles.Manager))
+    .WithName("CheckManagerRole")
+    .WithSummary("Проверить роль Руководителя")
+    .WithDescription("Тестовый защищённый метод: доступен только пользователю с ролью Руководителя.")
+    .Produces(StatusCodes.Status401Unauthorized)
+    .Produces(StatusCodes.Status403Forbidden);
 
 app.MapGet("/api/auth/role-check/methodologist", () => Results.Ok(new { Role = UserRoles.Methodologist }))
-    .RequireAuthorization(policy => policy.RequireRole(UserRoles.Methodologist));
-
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
-
-app.MapGet("/weatherforecast", () =>
-    {
-        var forecast = Enumerable.Range(1, 5).Select(index =>
-                new WeatherForecast
-                (
-                    DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-                    Random.Shared.Next(-20, 55),
-                    summaries[Random.Shared.Next(summaries.Length)]
-                ))
-            .ToArray();
-        return forecast;
-    })
-    .WithName("GetWeatherForecast");
+    .RequireAuthorization(policy => policy.RequireRole(UserRoles.Methodologist))
+    .WithName("CheckMethodologistRole")
+    .WithSummary("Проверить роль Методиста")
+    .WithDescription("Тестовый защищённый метод: доступен только пользователю с ролью Методиста.")
+    .Produces(StatusCodes.Status401Unauthorized)
+    .Produces(StatusCodes.Status403Forbidden);
 
 app.MapEventEndpoints();
 
 app.Run();
 
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
+sealed class BearerSecuritySchemeTransformer : IOpenApiDocumentTransformer
 {
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
+    public Task TransformAsync(
+        OpenApiDocument document,
+        OpenApiDocumentTransformerContext context,
+        CancellationToken cancellationToken)
+    {
+        document.Components ??= new OpenApiComponents();
+        document.Components.SecuritySchemes ??= new Dictionary<string, IOpenApiSecurityScheme>();
+        document.Components.SecuritySchemes["Bearer"] = new OpenApiSecurityScheme
+        {
+            Type = SecuritySchemeType.Http,
+            Scheme = "bearer",
+            In = ParameterLocation.Header,
+            BearerFormat = "JWT",
+            Description = "Введите JWT-токен без префикса Bearer."
+        };
+
+        return Task.CompletedTask;
+    }
+}
+
+sealed class BearerSecurityRequirementTransformer : IOpenApiOperationTransformer
+{
+    public Task TransformAsync(
+        OpenApiOperation operation,
+        OpenApiOperationTransformerContext context,
+        CancellationToken cancellationToken)
+    {
+        var endpointMetadata = context.Description.ActionDescriptor.EndpointMetadata;
+        if (endpointMetadata?.OfType<IAllowAnonymous>().Any() == true ||
+            endpointMetadata?.OfType<IAuthorizeData>().Any() != true)
+        {
+            return Task.CompletedTask;
+        }
+
+        operation.Security ??= [];
+        operation.Security.Add(new OpenApiSecurityRequirement
+        {
+            [new OpenApiSecuritySchemeReference("Bearer", context.Document)] = []
+        });
+
+        return Task.CompletedTask;
+    }
 }
