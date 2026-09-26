@@ -8,6 +8,9 @@ public enum RejectionReason
     /// <summary>Рейс не начат или уже закончился Прибытием или Срывом.</summary>
     TripNotRunning,
 
+    /// <summary>Рейс уже начат: новый Рейс начинается с чистого состояния, журнал идущего не стирается.</summary>
+    TripAlreadyStarted,
+
     /// <summary>Контент не проходит валидатор или не сходится с настройкой Рейса: движок не исполняет непроверенный граф.</summary>
     InvalidContent,
 
@@ -77,7 +80,9 @@ public static class TripEngine
 
     private static TripResult Start(TripState state, TripContent content, string serviceClass)
     {
-        var errors = ContentErrors(content);
+        if (state.Status != TripStatus.NotStarted)
+            return Reject(state, RejectionReason.TripAlreadyStarted, "Рейс уже начат: новый Рейс начинается с чистого состояния");
+        var errors = content.Errors();
         if (errors.Count > 0)
             return Reject(state, RejectionReason.InvalidContent,
                 $"Рейс не начат: в контенте ошибок — {errors.Count}. {string.Join("; ", errors)}");
@@ -93,34 +98,6 @@ public static class TripEngine
         };
         return Accept(EnterEvent(started, content.Settings.ShiftStartEvent));
     }
-
-    /// <summary>
-    /// Настройка Рейса ссылается на существующие События, id Событий не повторяются,
-    /// каждое Событие проходит валидатор; Флаги сверяются с остальными Событиями Рейса.
-    /// </summary>
-    private static List<string> ContentErrors(TripContent content)
-    {
-        var errors = new List<string>();
-        var ids = content.Events.Select(ev => ev.Id).ToList();
-        errors.AddRange(ids.GroupBy(id => id).Where(g => g.Count() > 1).Select(g => $"Два События с id «{g.Key}»"));
-        if (!ids.Contains(content.Settings.ShiftStartEvent))
-            errors.Add($"События Заступа «{content.Settings.ShiftStartEvent}» нет");
-        foreach (var option in content.Settings.ProactiveChoice.Options)
-            errors.AddRange(option.Pool.Where(id => !ids.Contains(id))
-                .Select(id => $"В пуле Проактивного выбора «{option.Id}» нет События «{id}»"));
-
-        errors.AddRange(content.Events.SelectMany(ev => EventValidator
-            .Validate(ev, content.Directory, FlagsSetOutside(content, ev.Id))
-            .Errors.Select(error => $"{ev.Id} v{ev.Version}, {error.Where}: {error.Message}")));
-        return errors;
-    }
-
-    private static HashSet<string> FlagsSetOutside(TripContent content, string eventId) => content.Events
-        .Where(ev => ev.Id != eventId)
-        .SelectMany(ev => ev.Steps)
-        .SelectMany(step => step.Reactions)
-        .SelectMany(reaction => reaction.SetsFlags ?? [])
-        .ToHashSet();
 
     private static TripResult Proactive(TripState state, string optionId)
     {
@@ -148,7 +125,7 @@ public static class TripEngine
         var changes = new List<ScaleChange>();
         foreach (var (code, delta) in reaction.ScaleDeltas ?? new Dictionary<string, int>())
         {
-            var definition = directory.Scales.Single(s => s.Code == code);
+            var definition = directory.Scale(code);
             var before = scales[code];
             var after = Math.Clamp(before + delta, definition.Min, definition.Max);
             scales = scales.SetItem(code, after);
@@ -159,7 +136,7 @@ public static class TripEngine
 
         var brokenScale = BrokenScale(next);
         var ends = reaction.CriticalError || brokenScale is not null;
-        var transition = ends ? null : (reaction.Transitions ?? []).First(t => Conditions.Hold(t.Conditions, next));
+        var transition = ends ? null : (reaction.Transitions ?? []).First(t => Conditions.AllHold(t.Conditions, next));
         var ev = state.CurrentEvent!;
         next = next with
         {
@@ -216,7 +193,7 @@ public static class TripEngine
         if (played.Count(id => id != settings.ShiftStartEvent) >= settings.EventsAfterShiftStart)
             return Arrive(state);
         var nextId = state.Plan.FirstOrDefault(id =>
-            !played.Contains(id) && Conditions.Hold(state.Content.Event(id).Conditions, state));
+            !played.Contains(id) && Conditions.AllHold(state.Content.Event(id).Conditions, state));
         return nextId is null ? Arrive(state) : EnterEvent(state, nextId);
     }
 

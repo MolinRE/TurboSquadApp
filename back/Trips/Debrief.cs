@@ -25,7 +25,7 @@ public sealed record Debrief(TripStatus Result, string Summary, IReadOnlyList<De
                     items.Add(new DebriefProactiveChoice(proactive.Situation, proactive.Options.Single(o => o.Id == chosen.OptionId).Text));
                     break;
                 case Decision decision:
-                    decisions.Add(Row(content, decision));
+                    decisions.Add(DecisionOf(content, decision));
                     break;
                 case EventFinished finished:
                     var ev = content.Event(finished.EventId);
@@ -45,21 +45,21 @@ public sealed record Debrief(TripStatus Result, string Summary, IReadOnlyList<De
         if (failure.Cause == FailureCause.CriticalError)
         {
             var decision = state.Journal.OfType<Decision>().Last(d => d.CriticalError);
-            return $"Срыв рейса: Критическая ошибка — «{Row(state.Content!, decision).Text}»";
+            return $"Срыв рейса: Критическая ошибка — «{DecisionOf(state.Content!, decision).Text}»";
         }
-        var scale = state.Content!.Directory.Scales.Single(s => s.Code == failure.Scale);
+        var scale = state.Content!.Directory.Scale(failure.Scale!);
         var reason = scale.FailureReason is null ? "" : $" — {scale.FailureReason}";
         return $"Срыв рейса: Шкала «{scale.Name}» упала до {state.Scales[scale.Code]}{reason}";
     }
 
-    private static DebriefDecision Row(TripContent content, Decision decision)
+    private static DebriefDecision DecisionOf(TripContent content, Decision decision)
     {
         var ev = content.Event(decision.EventId);
         var step = ev.Steps.Single(s => s.Id == decision.StepId);
         var reaction = decision.TimedOut ? step.Timeout! : step.Variants!.Single(v => v.Id == decision.VariantId);
         var changes = decision.Changes
             .Select(c => new DebriefScaleChange(
-                c.Scale, content.Directory.Scales.Single(s => s.Code == c.Scale).Name, c.Nominal, c.Applied, c.Before, c.After))
+                c.Scale, content.Directory.Scale(c.Scale).Name, c.Nominal, c.Applied, c.Before, c.After))
             .ToList();
         return new DebriefDecision(
             step.Id, step.Situation, decision.VariantId, decision.TimedOut, reaction.Text, changes, decision.FlagsSet,

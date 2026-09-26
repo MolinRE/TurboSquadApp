@@ -48,6 +48,7 @@ public class TripEngineTests
         Assert.Equal(new TripFailure(FailureCause.Scale, "loyalty"), trip.State.Failure);
         Assert.Equal((0, 70), trip.Scales);
         Assert.Equal(RejectionReason.TripNotRunning, trip.Rejected(new ChooseVariant("a")).Reason);
+        Assert.Equal(RejectionReason.TripAlreadyStarted, trip.Rejected(new StartTrip(Trip.SeedTrip(), "standard")).Reason);
 
         var debrief = Debrief.Build(trip.State);
         Assert.Equal(TripStatus.Failed, debrief.Result);

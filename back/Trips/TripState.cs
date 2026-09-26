@@ -1,14 +1,7 @@
 using System.Collections.Immutable;
-using TurboSquadApp.Content;
 using TurboSquadApp.Events;
 
 namespace TurboSquadApp.Trips;
-
-/// <summary>Контент Рейса, зафиксированный на старте: справочники, События тех версий, что будут играться, и настройка Рейса.</summary>
-public sealed record TripContent(ContentDirectory Directory, IReadOnlyList<EventDocument> Events, TripSettings Settings)
-{
-    public EventDocument Event(string id) => Events.Single(e => e.Id == id);
-}
 
 /// <summary>Действие над Рейсом: его присылает проводник, а «время вышло» — серверный таймер.</summary>
 public abstract record TripAction;

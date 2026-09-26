@@ -21,6 +21,10 @@ public sealed record EventDocument
 
     public string Start { get; init; } = "";
     public IReadOnlyList<Step> Steps { get; init; } = [];
+
+    /// <summary>Флаги, которые ставят Варианты и ветки таймаута этого События.</summary>
+    [JsonIgnore]
+    public IEnumerable<string> FlagsSet => Steps.SelectMany(step => step.Reactions).SelectMany(reaction => reaction.SetsFlags ?? []);
 }
 
 /// <summary>Шаг: ситуация или реплика, на которую проводник реагирует. Шаг с полем Outcome — Исход.</summary>
