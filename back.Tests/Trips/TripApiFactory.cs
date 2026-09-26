@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using TurboSquadApp.Data;
+using TurboSquadApp.Voice;
 
 namespace TurboSquadApp.Tests.Trips;
 
@@ -26,6 +27,8 @@ public sealed class TripApiFactory : WebApplicationFactory<Program>
             services.RemoveAll(typeof(IDbContextOptionsConfiguration<AppDbContext>));
             services.AddDbContext<AppDbContext>(options => options.UseInMemoryDatabase(_database));
             services.AddSingleton<TimeProvider>(Clock);
+            services.AddSingleton<FakeVoicePipeline>();
+            services.AddSingleton<IVoicePipeline>(sp => sp.GetRequiredService<FakeVoicePipeline>());
         });
 
     /// <summary>Клиент от имени нового Проводника.</summary>
@@ -51,6 +54,26 @@ public sealed class TripApiFactory : WebApplicationFactory<Program>
     {
         await using var scope = Services.CreateAsyncScope();
         return await query(scope.ServiceProvider.GetRequiredService<AppDbContext>());
+    }
+}
+
+/// <summary>Детерминированный провайдер для API-тестов: первый байт аудио задаёт choice.</summary>
+public sealed class FakeVoicePipeline : IVoicePipeline
+{
+    public async Task<VoicePipelineResult> ProcessAsync(
+        VoicePipelineRequest request, Stream audio, string fileName, string? contentType,
+        CancellationToken cancellationToken)
+    {
+        var buffer = new byte[1];
+        var marker = await audio.ReadAsync(buffer, cancellationToken) == 0 ? -1 : buffer[0];
+        return marker switch
+        {
+            (int)'x' => new VoicePipelineResult("Невнятный ответ", "a", 0.2, 8, false, "LowConfidence", "Низкая уверенность", "fake-laya"),
+            (int)'y' => VoicePipelineResult.Failure("SttUnavailable", "STT недоступен", 7),
+            (int)'a' or (int)'b' or (int)'c' => new VoicePipelineResult(
+                $"Голосовой ответ {(char)marker}", ((char)marker).ToString(), 0.95, 12, true, null, null, "fake-laya"),
+            _ => VoicePipelineResult.Failure("SttInvalidResponse", "Пустой тестовый ответ", 4),
+        };
     }
 }
 

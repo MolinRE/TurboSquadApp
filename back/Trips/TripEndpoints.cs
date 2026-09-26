@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Microsoft.AspNetCore.Mvc;
 
 namespace TurboSquadApp.Trips;
 
@@ -33,6 +34,20 @@ public static class TripEndpoints
             .WithName("ChooseVariant")
             .WithSummary("Выбрать Вариант")
             .WithDescription("eventId и stepId — Шаг, на который отвечает проводник: ответ на уже пройденный Шаг (повторный клик) отклоняется. Сервер перепроверяет Условия Варианта. Ответ позже таймера больше чем на 1 с засчитывается как таймаут.");
+
+        trips.MapPost("/{id:guid}/voice", async (
+                Guid id, [FromForm] string eventId, [FromForm] string stepId, IFormFile audio,
+                HttpContext http, TripService service, CancellationToken ct) =>
+                await service.VoiceAsync(UserId(http), id, eventId, stepId, audio, ct))
+            .Accepts<VoiceStepRequest>("multipart/form-data")
+            .Produces<TripView>()
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity)
+            .Produces(StatusCodes.Status404NotFound)
+            .WithName("AnswerVoiceStep")
+            .WithSummary("Ответить голосом")
+            .WithDescription("Принимает готовый аудиофрагмент голосового Шага, распознаёт его через GigaAM-v3, маршрутизирует Laya и применяет выбранный Вариант. Аудио не сохраняется.")
+            .DisableAntiforgery();
 
         trips.MapPost("/{id:guid}/timeout", (Guid id, TimeOutRequest request, HttpContext http, TripService service, CancellationToken ct) =>
                 service.ActAsync(UserId(http), id, new TimeOut(), new StepPosition(request.EventId, request.StepId), ct))
@@ -70,6 +85,8 @@ public static class TripEndpoints
 public sealed record StartTripRequest(string ServiceClass);
 
 public sealed record ChooseVariantRequest(string EventId, string StepId, string VariantId);
+
+public sealed record VoiceStepRequest(string EventId, string StepId, IFormFile Audio);
 
 public sealed record TimeOutRequest(string EventId, string StepId);
 

@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
@@ -35,6 +36,10 @@ public class TripApiTests(TripApiFactory factory) : IClassFixture<TripApiFactory
         var decisions = await factory.Database(db => db.TripJournal.Where(r => r.TripId == trip.Id && r.Kind == "decision").ToListAsync());
         Assert.Equal(8, decisions.Count);
         Assert.All(decisions, d => Assert.Equal((1, false), (d.EventVersion, d.ElapsedMs is null)));
+        var voiceAttempts = await factory.Database(db => db.TripJournal.Where(r => r.TripId == trip.Id && r.Kind == "voiceAttempt").ToListAsync());
+        Assert.Equal(("Голосовой ответ a", true, "a"),
+            (Assert.Single(voiceAttempts).VoiceTranscript, Assert.Single(voiceAttempts).VoiceApplied, Assert.Single(voiceAttempts).VoiceChoice));
+        Assert.Single(debrief["voiceAttempts"]!.AsArray());
     }
 
     [Fact]
@@ -89,6 +94,59 @@ public class TripApiTests(TripApiFactory factory) : IClassFixture<TripApiFactory
     }
 
     [Fact]
+    public async Task Voice_step_rejects_button_input_and_keeps_step()
+    {
+        var trip = await TripClient.Start(factory, "business");
+        await trip.Choose("a", "a");
+        await trip.Proactive("obhod");
+        Assert.Equal(("sit-06", "s1", "voice"), (trip.EventId, trip.StepId, trip.AnswerType));
+        Assert.Empty(trip.Json["step"]!["variants"]!.AsArray());
+
+        Assert.Equal("VoiceStepRequiresVoice", await trip.Rejected(
+            $"/api/trips/{trip.Id}/variant",
+            new { eventId = trip.EventId, stepId = trip.StepId, variantId = "a" }));
+        Assert.Equal(("sit-06", "s1"), (trip.EventId, trip.StepId));
+    }
+
+    [Fact]
+    public async Task Low_confidence_voice_attempt_is_recorded_without_progress()
+    {
+        var trip = await TripClient.Start(factory, "business");
+        await trip.Choose("a", "a");
+        await trip.Proactive("obhod");
+
+        var response = await trip.PostVoice("x");
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        var error = (await response.Content.ReadFromJsonAsync<JsonNode>())!;
+        Assert.Equal("LowConfidence", (string)error["reason"]!);
+        Assert.Equal(("sit-06", "s1"), (trip.EventId, trip.StepId));
+
+        var debriefAttempts = await factory.Database(db => db.TripJournal
+            .Where(row => row.TripId == trip.Id && row.Kind == "voiceAttempt")
+            .ToListAsync());
+        var attempt = Assert.Single(debriefAttempts);
+        Assert.Equal("Невнятный ответ", attempt.VoiceTranscript);
+        Assert.False(attempt.VoiceApplied);
+        Assert.Equal("LowConfidence", attempt.VoiceError);
+    }
+
+    [Fact]
+    public async Task Provider_error_returns_explicit_attempt_error_without_progress()
+    {
+        var trip = await TripClient.Start(factory, "business");
+        await trip.Choose("a", "a");
+        await trip.Proactive("obhod");
+
+        var response = await trip.PostVoice("y");
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        var error = (await response.Content.ReadFromJsonAsync<JsonNode>())!;
+        Assert.Equal("SttUnavailable", (string)error["reason"]!);
+        Assert.Equal(("sit-06", "s1"), (trip.EventId, trip.StepId));
+        var attempt = await factory.Database(db => db.TripJournal.SingleAsync(row => row.TripId == trip.Id && row.Kind == "voiceAttempt"));
+        Assert.Equal(("SttUnavailable", false), (attempt.VoiceError, attempt.VoiceApplied));
+    }
+
+    [Fact]
     public async Task Answer_later_than_timer_and_tolerance_follows_timeout_branch()
     {
         var trip = await TripClient.Start(factory, "standard");
@@ -123,6 +181,7 @@ public class TripApiTests(TripApiFactory factory) : IClassFixture<TripApiFactory
         public string Status => (string)Json["status"]!;
         public string? EventId => (string?)Json["step"]?["eventId"];
         public string? StepId => (string?)Json["step"]?["stepId"];
+        public string? AnswerType => (string?)Json["step"]?["answerType"];
         public (int Loyalty, int Safety) Scales => (Scale("loyalty"), Scale("safety"));
 
         private int Scale(string code) =>
@@ -139,7 +198,29 @@ public class TripApiTests(TripApiFactory factory) : IClassFixture<TripApiFactory
         public async Task Choose(params string[] variantIds)
         {
             foreach (var variantId in variantIds)
-                Json = await Post($"/api/trips/{Id}/variant", new { eventId = EventId, stepId = StepId, variantId });
+                Json = AnswerType == "voice"
+                    ? await Voice(variantId)
+                    : await Post($"/api/trips/{Id}/variant", new { eventId = EventId, stepId = StepId, variantId });
+        }
+
+        public async Task<JsonNode> Voice(string marker)
+        {
+            var response = await PostVoice(marker);
+            Assert.True(response.IsSuccessStatusCode,
+                $"/voice: {(int)response.StatusCode} {await response.Content.ReadAsStringAsync()}");
+            return (await response.Content.ReadFromJsonAsync<JsonNode>())!;
+        }
+
+        public async Task<HttpResponseMessage> PostVoice(string marker)
+        {
+            using var form = new MultipartFormDataContent();
+            form.Add(new StringContent(EventId!), "eventId");
+            form.Add(new StringContent(StepId!), "stepId");
+            var audio = new ByteArrayContent([ (byte)marker[0] ]);
+            audio.Headers.ContentType = new MediaTypeHeaderValue("audio/wav");
+            form.Add(audio, "audio", "answer.wav");
+
+            return await http.PostAsync($"/api/trips/{Id}/voice", form);
         }
 
         public async Task Proactive(string optionId) => Json = await Post($"/api/trips/{Id}/proactive", new { optionId });

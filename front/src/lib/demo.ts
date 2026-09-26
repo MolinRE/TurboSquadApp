@@ -1,8 +1,9 @@
-// Демо-аккаунты из PRD v7, §17. Пока нет бэкенда, входа как такового нет:
-// кнопки ведут на стартовую страницу роли, данные захардкожены.
+// Демо-аккаунты из PRD v7, §17. Пароли задаются в конфигурации бэкенда;
+// UI отправляет выбранный логин на общий endpoint авторизации.
 
 export type DemoAccount = {
   id: string;
+  username: string;
   label: string;
   name: string;
   initials: string;
@@ -13,6 +14,7 @@ export type DemoAccount = {
 export const demoAccounts: DemoAccount[] = [
   {
     id: "top-conductor",
+    username: "conductor-star",
     label: "Проводник-отличник",
     name: "Марина Соколова",
     initials: "МС",
@@ -21,6 +23,7 @@ export const demoAccounts: DemoAccount[] = [
   },
   {
     id: "new-conductor",
+    username: "conductor-novice",
     label: "Проводник-новичок",
     name: "Игорь Лебедев",
     initials: "ИЛ",
@@ -29,6 +32,7 @@ export const demoAccounts: DemoAccount[] = [
   },
   {
     id: "manager",
+    username: "manager-methodologist",
     label: "Руководитель-методист",
     name: "Ольга Верещагина",
     initials: "ОВ",

@@ -14,6 +14,9 @@ public sealed record StartTrip(TripContent Content, string ServiceClass) : TripA
 /// <summary>Выбрать Вариант текущего Шага.</summary>
 public sealed record ChooseVariant(string VariantId) : TripAction;
 
+/// <summary>Фиксирует результат голосовой попытки без изменения состояния Рейса.</summary>
+public sealed record RecordVoiceAttempt(VoiceAttempt Attempt) : TripAction;
+
 /// <summary>Таймер Шага истёк: срабатывает ветка таймаута.</summary>
 public sealed record TimeOut : TripAction;
 
@@ -96,6 +99,14 @@ public sealed record ProactiveChosen(string OptionId) : JournalEntry;
 public sealed record Decision(
     string EventId, int EventVersion, string StepId, string? VariantId, bool TimedOut,
     IReadOnlyList<ScaleChange> Changes, IReadOnlyList<string> FlagsSet, bool CriticalError, string? To) : JournalEntry;
+
+/// <summary>
+/// Результат голосовой попытки. Записывается отдельно от Decision, чтобы неуспешная
+/// расшифровка или низкая уверенность сохранялись без продвижения Рейса.
+/// </summary>
+public sealed record VoiceAttempt(
+    string EventId, int EventVersion, string StepId, string? Transcript, string? Choice,
+    double? Confidence, int LatencyMs, bool Applied, string? ErrorCode, string? ProviderRequestId) : JournalEntry;
 
 /// <summary>Изменение Шкалы: из контента (Nominal) и фактическое после обрезки по диапазону (Applied).</summary>
 public sealed record ScaleChange(string Scale, int Nominal, int Applied, int Before, int After);
