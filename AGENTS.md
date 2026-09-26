@@ -4,6 +4,7 @@
 - Словарь терминов: CONTEXT.md
 - Архитектурные решения: docs/adr/
 - Дизайн-система и компоненты: docs/ui-kit/
+- Фронт (Next.js): front/, свои правила — front/AGENTS.md
 
 ## Какую команду звать на каком этапе
 - Завести тикет фичи → /to-tickets (mattpocock, пишет в GitHub Issues)
