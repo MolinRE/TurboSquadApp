@@ -1,3 +1,22 @@
-.idea
-bin
-objcode
+# IDE и ОС
+.idea/
+.vs/
+*.user
+.DS_Store
+Thumbs.db
+
+# .NET: результаты сборки
+bin/
+obj/
+TestResults/
+
+# Node: зависимости и сборка (правила Next.js — в front/.gitignore)
+node_modules/
+
+# Секреты: в репозитории только шаблон .env.example
+.env
+.env.*
+!.env.example
+
+# Личные настройки Claude Code
+.claude/settings.local.json
