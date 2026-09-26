@@ -3,6 +3,7 @@ using System.Linq;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using TurboSquadApp.Events;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -38,6 +39,8 @@ app.MapGet("/weatherforecast", () =>
         return forecast;
     })
     .WithName("GetWeatherForecast");
+
+app.MapEventEndpoints();
 
 app.Run();
 

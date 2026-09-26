@@ -1,0 +1,91 @@
+{
+  "id": "sit-33",
+  "version": 2,
+  "title": "Два пассажира на одно место (черновик после правки)",
+  "topic": "Посадка и документы",
+  "categories": ["Нештатная"],
+  "source": "Ситуации на борту, №33",
+  "conditions": [],
+  "start": "s1",
+  "steps": [
+    {
+      "id": "s1",
+      "answerType": "buttons",
+      "timerSec": 20,
+      "situation": "На одно место претендуют два пассажира, у каждого есть билет.",
+      "variants": [
+        { "id": "a", "text": "«Я вижу, что ситуация требует уточнения. Позвольте Ваши билеты»", "scaleDeltas": { "loyalty": 5, "safety": 5 }, "transitions": [{ "to": "s2" }] },
+        { "id": "b", "text": "«Разбирайтесь между собой, кто сел первым»", "scaleDeltas": { "loyalty": -25, "politeness": -10 }, "transitions": [{ "to": "s2_" }] }
+      ]
+    },
+    {
+      "id": "s2",
+      "answerType": "buttons",
+      "situation": "Оба билета действительны и оформлены на одно место.",
+      "variants": [
+        {
+          "id": "a",
+          "text": "«Сейчас я приглашу начальника поезда для уточнения»",
+          "scaleDeltas": { "loyalty": 5 },
+          "transitions": [
+            { "to": "report_to_manager", "conditions": [{ "type": "flag", "flag": "did_not_report_drunkk", "present": true }] },
+            { "to": "s3" }
+          ]
+        },
+        { "id": "b", "text": "Оставить место тому, кто сел первым", "scaleDeltas": { "loyalty": -20 }, "transitions": [{ "to": "fail" }] }
+      ]
+    },
+    {
+      "id": "report_to_manager",
+      "answerType": "buttons",
+      "situation": "Начальник поезда заметил нетрезвого пассажира.",
+      "variants": [
+        { "id": "a", "text": "Доложить сейчас", "scaleDeltas": { "safety": -10 }, "transitions": [{ "to": "s3" }] }
+      ]
+    },
+    {
+      "id": "s3",
+      "answerType": "buttons",
+      "situation": "Сбой при продаже билетов. В поезде есть свободные места.",
+      "variants": [
+        { "id": "a", "text": "Предложить свободное место", "scaleDeltas": { "loyalty": 5 }, "transitions": [{ "to": "s4" }] },
+        { "id": "b", "text": "Предложить место классом выше", "conditions": [{ "type": "class", "classes": ["business", "premium"] }], "scaleDeltas": { "loyalty": 15 }, "transitions": [{ "to": "s4" }] }
+      ]
+    },
+    {
+      "id": "s4",
+      "answerType": "buttons",
+      "situation": "Пассажир соглашается пересесть.",
+      "variants": [
+        {
+          "id": "a",
+          "text": "«Благодарю Вас за понимание»",
+          "scaleDeltas": { "loyalty": 10 },
+          "transitions": [
+            { "to": "fail_complaint", "conditions": [{ "type": "scale", "scale": "loyalty", "op": "меньше", "value": 40 }] },
+            { "to": "ok" }
+          ]
+        },
+        {
+          "id": "b",
+          "text": "Молча проводить",
+          "scaleDeltas": { "loyalty": -5 },
+          "transitions": [
+            { "to": "ok", "conditions": [{ "type": "scale", "scale": "loyalty", "op": ">=", "value": 40 }] }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "s5",
+      "answerType": "buttons",
+      "situation": "Шаг, на который после правки не ведёт ни один переход.",
+      "variants": [
+        { "id": "a", "text": "Переспросить пассажира", "transitions": [{ "to": "s5" }] }
+      ]
+    },
+    { "id": "ok", "outcome": "success", "situation": "Оба пассажира на своих местах." },
+    { "id": "fail_complaint", "outcome": "failure", "situation": "Пассажир пересел, но недоволен." },
+    { "id": "fail", "outcome": "failure", "situation": "Пассажир остался без места." }
+  ]
+}
