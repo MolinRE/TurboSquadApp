@@ -26,7 +26,8 @@ builder.Services.AddOpenApi(options =>
     options.AddOperationTransformer<BearerSecurityRequirementTransformer>();
 });
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(PostgresConnection.Build(builder.Configuration)));
+    options.UseNpgsql(PostgresConnection.Build(builder.Configuration))
+        .UseSnakeCaseNamingConvention());   // как в AppDbContextFactory: схема после миграции RenameToSnakeCase
 var jwtOptions = JwtOptions.FromConfiguration(builder.Configuration);
 builder.Services.AddSingleton(jwtOptions);
 builder.Services.AddSingleton<JwtTokenService>();
