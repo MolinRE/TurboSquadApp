@@ -51,11 +51,8 @@ public class EventValidatorTests
 
     private static JsonNode ValidEvent() => JsonNode.Parse(ValidEventJson)!;
 
-    private static ValidationReport Validate(JsonNode ev, params string[] flagsSetElsewhere)
-    {
-        var document = ev.Deserialize<EventDocument>(EventJson.Options)!;
-        return EventValidator.Validate(document, ContentDirectory.Default, flagsSetElsewhere);
-    }
+    private static ValidationReport Validate(JsonNode ev, params string[] flagsSetElsewhere) =>
+        EventValidator.ValidateJson(ev.ToJsonString(), ContentDirectory.Default, flagsSetElsewhere);
 
     private static void AssertSingleError(ValidationReport report, string where, string rule)
     {
@@ -363,7 +360,7 @@ public class EventValidatorTests
     [Fact]
     public void Broken_draft_from_prototype_gives_eight_errors_and_one_warning()
     {
-        var draft = JsonNode.Parse(File.ReadAllText(Path.Combine("Events", "TestData", "sit-33-v2-broken.json")))!;
+        var draft = JsonNode.Parse(TestData.BrokenDraftJson())!;
 
         var report = Validate(draft, "did_not_report_drunk");
 
@@ -383,6 +380,77 @@ public class EventValidatorTests
             SortedOrdinal(report.Errors.Select(e => (e.Where, e.Rule))));
         var warning = Assert.Single(report.Warnings);
         Assert.Equal("Шаг s2 → Вариант a, переход 1", warning.Where);   // Флаг с опечаткой
+    }
+
+    [Fact]
+    public void Unknown_field_is_an_error_instead_of_silent_loss()
+    {
+        var ev = ValidEvent();
+        Step(ev, "s1")["timer_sec"] = 20;
+
+        var error = Assert.Single(Validate(ev).Errors);
+        Assert.Equal("Событие", error.Where);
+        Assert.Contains("timer_sec", error.Message);
+    }
+
+    [Fact]
+    public void Missing_required_value_is_an_error_not_a_crash()
+    {
+        var ev = ValidEvent();
+        Step(ev, "s1")["id"] = null;
+
+        var error = Assert.Single(Validate(ev).Errors);
+        Assert.Contains("$.steps[0].id", error.Message);
+    }
+
+    [Fact]
+    public void Unknown_required_role_stage_of_voice_step_is_an_error()
+    {
+        var ev = ValidEvent();
+        Step(ev, "s1")["requiredRoleStages"] = JsonNode.Parse("""["признание"]""");
+
+        AssertSingleError(Validate(ev), "Шаг s1", "PRD §7.2");
+    }
+
+    [Fact]
+    public void Issue_points_to_step_variant_and_transition_for_highlighting_in_graph()
+    {
+        var ev = ValidEvent();
+        Variant(ev, "s1", "b")["transitions"] = JsonNode.Parse("""
+            [{ "to": "ok", "conditions": [{ "type": "class", "classes": ["premium"] }] }, { "to": "fail" }]
+            """);
+        Step(ev, "s1")["timeout"]!["scaleDeltas"] = JsonNode.Parse("""{ "politeness": -5 }""");
+
+        var report = Validate(ev);
+
+        Assert.Equal(
+            [new IssueLocation("s1", "b", Timeout: false, Transition: 1), new IssueLocation("s1", Timeout: true)],
+            report.Errors.Select(e => e.Location));
+    }
+
+    [Fact]
+    public void Conditions_and_transitions_from_prd_example_are_read_without_loss()
+    {
+        // Условия — дословно пример из PRD v7 §5.2.
+        var ev = ValidEvent();
+        Variant(ev, "s1", "b")["transitions"] = JsonNode.Parse("""
+            [
+              {
+                "to": "ok",
+                "conditions": [
+                  { "type": "scale", "scale": "safety", "op": "<", "value": 40 },
+                  { "type": "flag",  "flag": "called_train_manager", "present": true },
+                  { "type": "class", "classes": ["business", "first"] }
+                ]
+              },
+              { "to": "fail" }
+            ]
+            """);
+
+        var report = Validate(ev, "called_train_manager");
+
+        Assert.Empty(report.Errors);
+        Assert.Empty(report.Warnings);
     }
 
     [Fact]

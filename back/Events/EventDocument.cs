@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace TurboSquadApp.Events;
 
@@ -49,7 +50,13 @@ public sealed record Step
     /// <summary>У Исхода Шкал быть не должно; поле есть, чтобы валидатор это заметил.</summary>
     public IReadOnlyDictionary<string, int>? ScaleDeltas { get; init; }
 
+    [JsonIgnore]
     public bool IsOutcome => Outcome is not null;
+
+    /// <summary>Реакции проводника на Шаг: Варианты и ветка таймаута — она устроена как Вариант.</summary>
+    [JsonIgnore]
+    public IEnumerable<Variant> Reactions =>
+        Timeout is null ? Variants ?? [] : [.. Variants ?? [], Timeout];
 }
 
 /// <summary>Вариант: заранее описанная реакция проводника со своими последствиями и переходами.</summary>
@@ -83,7 +90,10 @@ public sealed record Transition
 /// <summary>
 /// Условие (ADR-0002): "scale" (Scale, Op, Value), "flag" (Flag, Present) или "class" (Classes — коды классов).
 /// Одна плоская запись, чтобы неизвестный тип стал ошибкой валидатора, а не падением разбора JSON.
+/// Поэтому лишние поля здесь пропускаются: у неизвестного типа свои поля, а опечатку в известном
+/// поле валидатор всё равно поймает — обязательное поле окажется пустым.
 /// </summary>
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Skip)]
 public sealed record Condition
 {
     public string Type { get; init; } = "";
@@ -97,5 +107,13 @@ public sealed record Condition
 
 public static class EventJson
 {
-    public static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web);
+    /// <summary>
+    /// Незнакомые поля и null в обязательных полях — ошибка разбора, а не молчаливая потеря:
+    /// опечатка в ключе (timer_sec вместо timerSec) иначе пропала бы без следа.
+    /// </summary>
+    public static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web)
+    {
+        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
+        RespectNullableAnnotations = true,
+    };
 }

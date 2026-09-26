@@ -32,13 +32,14 @@ public class EventValidationEndpointTests(WebApplicationFactory<Program> factory
     [Fact]
     public async Task Broken_draft_is_reported_with_errors_and_warning()
     {
-        var draft = File.ReadAllText(Path.Combine("Events", "TestData", "sit-33-v2-broken.json"));
-
-        var report = await PostForValidation(draft);
+        var report = await PostForValidation(TestData.BrokenDraftJson());
 
         Assert.False((bool)report["isValid"]!);
         Assert.Equal(8, report["errors"]!.AsArray().Count);
         var warning = Assert.Single(report["warnings"]!.AsArray());
         Assert.Equal("Шаг s2 → Вариант a, переход 1", (string)warning!["where"]!);
+        Assert.Equal("s2", (string)warning["location"]!["stepId"]!);
+        Assert.Equal("a", (string)warning["location"]!["variantId"]!);
+        Assert.Equal(1, (int)warning["location"]!["transition"]!);
     }
 }
