@@ -4,13 +4,15 @@ import { useRef, useState, type PointerEvent } from "react";
 import { cn } from "cn";
 import { Badge } from "@/components/ui/badge";
 import { TopicIcon } from "@/components/game/topic-icon";
-import type { SwipeAnswer, SwipeCard as Card } from "@/lib/swipes/contract";
+import type { ShiftCard, SwipeAnswer } from "@/lib/swipes/contract";
 
 /** Смещение, после которого отпущенная карточка засчитывается ответом; короткое касание не отвечает. */
 const SWIPE_THRESHOLD = 96;
 export const SWIPE_EXIT_MS = 250;
 
 type Offset = { x: number; y: number };
+
+const atRest: Offset = { x: 0, y: 0 };
 
 /** Куда тянут карточку: вверх — «Не знаю», иначе по горизонтали. */
 function leaningTo({ x, y }: Offset): SwipeAnswer | null {
@@ -19,10 +21,15 @@ function leaningTo({ x, y }: Offset): SwipeAnswer | null {
   return x > 0 ? "right" : "left";
 }
 
+/** Насколько карточку утянули в сторону direction. */
+function pullOf(offset: Offset, direction: SwipeAnswer | null) {
+  if (!direction) return 0;
+  return direction === "unknown" ? -offset.y : Math.abs(offset.x);
+}
+
 function answerOf(offset: Offset): SwipeAnswer | null {
   const direction = leaningTo(offset);
-  const distance = direction === "unknown" ? -offset.y : Math.abs(offset.x);
-  return distance >= SWIPE_THRESHOLD ? direction : null;
+  return pullOf(offset, direction) >= SWIPE_THRESHOLD ? direction : null;
 }
 
 const exitTransform: Record<SwipeAnswer, string> = {
@@ -42,28 +49,30 @@ export function SwipeCard({
   disabled,
   onAnswer,
 }: {
-  card: Card;
+  card: ShiftCard;
   exitTo: SwipeAnswer | null;
   disabled: boolean;
   onAnswer: (answer: SwipeAnswer) => void;
 }) {
   const start = useRef<Offset | null>(null);
-  const [offset, setOffset] = useState<Offset>({ x: 0, y: 0 });
+  const [offset, setOffset] = useState<Offset>(atRest);
   const [dragging, setDragging] = useState(false);
 
-  function release() {
+  /**
+   * Смещение сбрасывается при любом отпускании. Улетает карточка за счёт exitTo, а если
+   * ответ не дошёл до сервера, она возвращается в центр и касание не засчитается ответом.
+   */
+  function endDrag() {
     start.current = null;
     setDragging(false);
-    const answer = answerOf(offset);
-    if (answer) onAnswer(answer);
-    else setOffset({ x: 0, y: 0 });
+    setOffset(atRest);
   }
 
   const handlers = {
     onPointerDown(event: PointerEvent<HTMLElement>) {
       if (disabled) return;
       event.currentTarget.setPointerCapture(event.pointerId);
-      start.current = { x: event.clientX - offset.x, y: event.clientY - offset.y };
+      start.current = { x: event.clientX, y: event.clientY };
       setDragging(true);
     },
     onPointerMove(event: PointerEvent<HTMLElement>) {
@@ -71,18 +80,16 @@ export function SwipeCard({
       setOffset({ x: event.clientX - start.current.x, y: event.clientY - start.current.y });
     },
     onPointerUp() {
-      if (start.current) release();
+      if (!start.current) return;
+      const answer = answerOf(offset);
+      endDrag();
+      if (answer) onAnswer(answer);
     },
-    onPointerCancel() {
-      start.current = null;
-      setDragging(false);
-      setOffset({ x: 0, y: 0 });
-    },
+    onPointerCancel: endDrag,
   };
 
   const leaning = dragging ? leaningTo(offset) : null;
-  const pull = leaning === "unknown" ? -offset.y : Math.abs(offset.x);
-  const hintOpacity = Math.min(1, pull / SWIPE_THRESHOLD);
+  const hintOpacity = Math.min(1, pullOf(offset, leaning) / SWIPE_THRESHOLD);
 
   const transform = exitTo
     ? exitTransform[exitTo]
@@ -93,7 +100,7 @@ export function SwipeCard({
       aria-label="Карточка"
       {...handlers}
       className={cn(
-        "absolute inset-0 flex touch-none flex-col gap-4 rounded-2xl bg-card p-5 shadow-[0_24px_40px_-28px_rgba(20,32,51,0.45)] select-none",
+        "absolute inset-0 flex touch-none flex-col gap-4 rounded-xl bg-card p-5 shadow-xl shadow-foreground/10 select-none",
         !disabled && "cursor-grab active:cursor-grabbing",
       )}
       style={{
@@ -134,7 +141,7 @@ function SwipeHint({
 }: {
   answer: SwipeAnswer | null;
   opacity: number;
-  card: Card;
+  card: ShiftCard;
 }) {
   if (!answer) return null;
   const hint = {

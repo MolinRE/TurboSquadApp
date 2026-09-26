@@ -21,7 +21,7 @@ function percentOf(scale: ScaleState, value: number) {
   return ((value - scale.min) / (scale.max - scale.min)) * 100;
 }
 
-export function formatDelta(delta: number) {
+function formatDelta(delta: number) {
   return `${delta > 0 ? "+" : "−"}${Math.abs(delta)}`;
 }
 
@@ -75,14 +75,12 @@ export function ScaleMeter({ scale, delta }: { scale: ScaleState; delta?: number
 export function ScalesPanel({
   scales,
   changes,
-  className,
 }: {
   scales: ScaleState[];
   changes?: Record<string, number>;
-  className?: string;
 }) {
   return (
-    <section aria-label="Шкалы" className={cn("grid gap-3 rounded-xl bg-card p-4", className)}>
+    <section aria-label="Шкалы" className="grid gap-3 rounded-xl bg-card p-4">
       {scales.map((scale) => (
         <ScaleMeter key={scale.code} scale={scale} delta={changes?.[scale.code]} />
       ))}

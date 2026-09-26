@@ -9,10 +9,10 @@ import { ScalesPanel } from "@/components/game/scale-meter";
 import { swipesApi } from "@/lib/swipes/api";
 import type {
   AnswerOutcome,
+  ShiftCard,
   ShiftProgress,
   ShiftState,
   SwipeAnswer,
-  SwipeCard as Card,
 } from "@/lib/swipes/contract";
 import { ExplanationText, SourceLine, VerdictLabel } from "./explanation";
 import { SWIPE_EXIT_MS, SwipeCard } from "./swipe-card";
@@ -25,7 +25,7 @@ type Phase =
   | { kind: "feedback" }
   | { kind: "finished" };
 
-type LastAnswer = { card: Card; outcome: AnswerOutcome };
+type LastAnswer = { card: ShiftCard; outcome: AnswerOutcome };
 
 const keyAnswers: Record<string, SwipeAnswer> = {
   ArrowLeft: "left",
@@ -193,7 +193,7 @@ function ShiftProgressBar({ progress }: { progress: ShiftProgress }) {
     <div className="flex items-center gap-3">
       <div className="flex flex-1 flex-col gap-1.5">
         <div className="flex justify-between text-xs font-bold">
-          <span>Карточки</span>
+          <span>Вопросы</span>
           <span className="tabular-nums">
             {progress.done} из {progress.total}
           </span>
@@ -209,7 +209,7 @@ function AnswerButtons({
   disabled,
   onAnswer,
 }: {
-  card: Card;
+  card: ShiftCard;
   disabled: boolean;
   onAnswer: (answer: SwipeAnswer) => void;
 }) {
@@ -255,7 +255,7 @@ function CorrectStrip({ outcome }: { outcome: AnswerOutcome }) {
         <VerdictLabel verdict="correct" className="mr-1.5 align-[-2px]" />
         <ExplanationText explanation={outcome.explanation} />
       </p>
-      <SourceLine source={outcome.source} />
+      <SourceLine source={outcome.explanation.source} />
     </div>
   );
 }
@@ -287,7 +287,7 @@ function FeedbackPanel({
       <p className="text-base leading-relaxed">
         <ExplanationText explanation={outcome.explanation} />
       </p>
-      <SourceLine source={outcome.source} />
+      <SourceLine source={outcome.explanation.source} />
       <Button autoFocus onClick={onContinue} className="mt-auto h-12 text-base font-bold">
         {finished ? "К итогу" : "Понятно"}
       </Button>

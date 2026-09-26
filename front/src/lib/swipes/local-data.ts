@@ -2,7 +2,7 @@
 // в том виде, в каком их хранит сервер (с верной стороной и последствиями).
 // Шкалы и Классы — как в справочнике Рейса на бэкенде.
 
-import type { ScaleState, ServiceClassRef, SwipeSide } from "./contract";
+import type { Explanation, ScaleState, ServiceClassRef, SwipeSide } from "./contract";
 
 export type ScaleDefinition = Omit<ScaleState, "value">;
 
@@ -29,8 +29,7 @@ export type SwipeQuestion = {
   right: SwipeQuestionSide;
   left: SwipeQuestionSide;
   correct: SwipeSide;
-  explanation: { text: string; keyFact: string };
-  source: string;
+  explanation: Explanation;
   topic: string;
   categories: string[];
   /** Пустой список — Вопрос для всех классов. */
@@ -51,8 +50,8 @@ export const localQuestions: SwipeQuestion[] = [
     explanation: {
       text: "Питомцев провозят только в переноске. Предложите переноску, при отказе вызовите начальника поезда.",
       keyFact: "только в переноске",
+      source: situation(4),
     },
-    source: situation(4),
     topic: "Посадка и документы",
     categories: ["Штатная"],
     serviceClasses: [],
@@ -67,8 +66,8 @@ export const localQuestions: SwipeQuestion[] = [
     explanation: {
       text: "После закрытия двери не открывают и поезд не задерживают. Направьте пассажира в кассу или приложение, чтобы переоформить билет.",
       keyFact: "двери не открывают",
+      source: situation(3),
     },
-    source: situation(3),
     topic: "Посадка и документы",
     categories: ["Штатная"],
     serviceClasses: [],
@@ -83,8 +82,8 @@ export const localQuestions: SwipeQuestion[] = [
     explanation: {
       text: "По рации не говорят, что пассажир пьян: он может услышать и стать агрессивным.",
       keyFact: "не говорят, что пассажир пьян",
+      source: situation(6),
     },
-    source: situation(6),
     topic: "Конфликты",
     categories: ["Нештатная"],
     serviceClasses: [],
@@ -99,8 +98,8 @@ export const localQuestions: SwipeQuestion[] = [
     explanation: {
       text: "Личные лекарства не выдают — ответственность ляжет на вас. Действуйте через аптечку поезда, начальника поезда и медиков.",
       keyFact: "Личные лекарства не выдают",
+      source: situation(28),
     },
-    source: situation(28),
     topic: "Медпомощь",
     categories: ["Нештатная"],
     serviceClasses: [],
@@ -115,8 +114,8 @@ export const localQuestions: SwipeQuestion[] = [
     explanation: {
       text: "Вызовите начальника поезда и по громкой связи найдите медиков среди пассажиров. Панике не поддавайтесь, но и время не теряйте.",
       keyFact: "по громкой связи",
+      source: situation(19),
     },
-    source: situation(19),
     topic: "Медпомощь",
     categories: ["Нештатная"],
     serviceClasses: [],
@@ -131,8 +130,8 @@ export const localQuestions: SwipeQuestion[] = [
     explanation: {
       text: "На борту запрещено курить, в том числе электронные сигареты. При отказе вызовите начальника поезда или ПТБ.",
       keyFact: "в том числе электронные сигареты",
+      source: situation(20),
     },
-    source: situation(20),
     topic: "Пожарная безопасность",
     categories: ["Штатная"],
     serviceClasses: [],
@@ -147,8 +146,8 @@ export const localQuestions: SwipeQuestion[] = [
     explanation: {
       text: "Бесхозную вещь не трогают. Сообщите начальнику поезда и ПТБ по поездной радиосвязи.",
       keyFact: "не трогают",
+      source: situation(41),
     },
-    source: situation(41),
     topic: "Пожарная безопасность",
     categories: ["Нештатная"],
     serviceClasses: [],
@@ -163,8 +162,8 @@ export const localQuestions: SwipeQuestion[] = [
     explanation: {
       text: "Окна в поезде не открываются: воздух идёт через вентиляцию с очисткой. Предложите отрегулировать климат.",
       keyFact: "воздух идёт через вентиляцию",
+      source: situation(35),
     },
-    source: situation(35),
     topic: "Техника",
     categories: ["Штатная"],
     serviceClasses: [],
@@ -179,8 +178,8 @@ export const localQuestions: SwipeQuestion[] = [
     explanation: {
       text: "Дежурное освещение остаётся всегда — ради безопасности всех на борту. Предложите маску для сна из каталога товаров.",
       keyFact: "Дежурное освещение остаётся всегда",
+      source: situation(34),
     },
-    source: situation(34),
     topic: "Техника",
     categories: ["Штатная"],
     serviceClasses: [],
@@ -195,8 +194,8 @@ export const localQuestions: SwipeQuestion[] = [
     explanation: {
       text: "В Первом классе проводник подходит не дольше чем за 5 минут. Бизнес — 10, Комфорт — 15, Стандарт — 20.",
       keyFact: "не дольше чем за 5 минут",
+      source: stoClasses,
     },
-    source: stoClasses,
     topic: "Сервис и питание",
     categories: ["Штатная"],
     serviceClasses: [classes.first],
@@ -211,8 +210,8 @@ export const localQuestions: SwipeQuestion[] = [
     explanation: {
       text: "В Бизнесе проводник подходит не дольше чем за 10 минут. Извинитесь и помогите.",
       keyFact: "не дольше чем за 10 минут",
+      source: stoClasses,
     },
-    source: stoClasses,
     topic: "Сервис и питание",
     categories: ["Штатная"],
     serviceClasses: [classes.business],
@@ -227,8 +226,8 @@ export const localQuestions: SwipeQuestion[] = [
     explanation: {
       text: "В Стандарте норматив ожидания персонала — до 20 минут. В Комфорте — 15, в Бизнесе — 10, в Первом — 5.",
       keyFact: "до 20 минут",
+      source: stoClasses,
     },
-    source: stoClasses,
     topic: "Сервис и питание",
     categories: ["Штатная"],
     serviceClasses: [classes.standard],
@@ -243,8 +242,8 @@ export const localQuestions: SwipeQuestion[] = [
     explanation: {
       text: "В Комфорте могут ехать дети 10–16 лет без сопровождения. Подходите к ребёнку в течение поездки.",
       keyFact: "дети 10–16 лет без сопровождения",
+      source: `${stoClasses}; ${situation(47)}`,
     },
-    source: `${stoClasses}; ${situation(47)}`,
     topic: "Посадка и документы",
     categories: ["Штатная"],
     serviceClasses: [classes.comfort],
@@ -259,8 +258,8 @@ export const localQuestions: SwipeQuestion[] = [
     explanation: {
       text: "Если алкоголь включён в стоимость билета, отказать нельзя. Подайте и предупредите начальника поезда.",
       keyFact: "отказать нельзя",
+      source: situation(50),
     },
-    source: situation(50),
     topic: "Сервис и питание",
     categories: ["Нештатная"],
     serviceClasses: [classes.first],
@@ -275,8 +274,8 @@ export const localQuestions: SwipeQuestion[] = [
     explanation: {
       text: "Проводник обязан заблаговременно предупредить пассажира о выходе, если тот на своём месте. Сообщите начальнику поезда и объясните дальнейший порядок.",
       keyFact: "обязан заблаговременно предупредить",
+      source: situation(38),
     },
-    source: situation(38),
     topic: "Посадка и документы",
     categories: ["Штатная"],
     serviceClasses: [],

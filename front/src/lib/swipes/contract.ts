@@ -28,7 +28,7 @@ export type ServiceClassRef = {
   name: string;
 };
 
-export type SwipeCard = {
+export type ShiftCard = {
   questionId: string;
   statement: string;
   rightLabel: string;
@@ -40,10 +40,11 @@ export type SwipeCard = {
   isRepeat: boolean;
 };
 
-/** Пояснение: ключевой факт — дословный фрагмент текста, экран его выделяет. */
+/** Пояснение: ключевой факт — дословный фрагмент текста, экран его выделяет; source — пункт Источника. */
 export type Explanation = {
   text: string;
   keyFact: string;
+  source: string;
 };
 
 export type ShiftProgress = {
@@ -57,7 +58,6 @@ export type MistakeItem = {
   questionId: string;
   statement: string;
   explanation: Explanation;
-  source: string;
 };
 
 export type ShiftResult = {
@@ -76,7 +76,7 @@ export type ShiftState = {
   scales: ScaleState[];
   progress: ShiftProgress;
   /** Текущая карточка; null, когда Смена закончена. */
-  card: SwipeCard | null;
+  card: ShiftCard | null;
   /** Итог; есть только у законченной Смены. */
   result: ShiftResult | null;
 };
@@ -85,7 +85,6 @@ export type AnswerOutcome = {
   verdict: Verdict;
   correctSide: SwipeSide;
   explanation: Explanation;
-  source: string;
   /** Фактические изменения Шкал после обрезки по границам: код Шкалы → изменение. */
   scaleChanges: Record<string, number>;
   /** Смена после ответа: следующая карточка или итог. */

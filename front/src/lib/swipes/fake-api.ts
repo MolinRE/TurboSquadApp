@@ -1,13 +1,13 @@
 // Подменный модуль: правила Смены на свайпах в памяти браузера, пока нет API Смены.
 // Ведёт себя как сервер: карточка приходит без верной стороны, вердикт и Шкалы
-// считает он. Повтор карточек внутри Смены сюда пока не входит.
+// считает он.
 
 import type {
   AnswerOutcome,
   ShiftState,
   ShiftStatus,
   SwipeAnswer,
-  SwipeCard,
+  ShiftCard,
   SwipesApi,
   Verdict,
 } from "./contract";
@@ -64,7 +64,7 @@ function findShift(shiftId: string): FakeShift {
   return shift;
 }
 
-function toCard(question: SwipeQuestion): SwipeCard {
+function toCard(question: SwipeQuestion): ShiftCard {
   return {
     questionId: question.id,
     statement: question.statement,
@@ -100,7 +100,6 @@ function toState(shift: FakeShift): ShiftState {
             questionId: question.id,
             statement: question.statement,
             explanation: question.explanation,
-            source: question.source,
           })),
         },
   });
@@ -175,7 +174,6 @@ export const fakeSwipesApi: SwipesApi = {
       verdict,
       correctSide: question.correct,
       explanation: structuredClone(question.explanation),
-      source: question.source,
       scaleChanges,
       shift: toState(shift),
     };

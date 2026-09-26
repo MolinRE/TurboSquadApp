@@ -1,6 +1,6 @@
 import { CircleCheck, CircleQuestionMark, CircleX } from "lucide-react";
 import { cn } from "cn";
-import type { Explanation as ExplanationData, Verdict } from "@/lib/swipes/contract";
+import type { Explanation, Verdict } from "@/lib/swipes/contract";
 
 const verdicts = {
   correct: { label: "Верно", icon: CircleCheck, className: "text-brand" },
@@ -19,7 +19,7 @@ export function VerdictLabel({ verdict, className }: { verdict: Verdict; classNa
 }
 
 /** Текст Пояснения с выделенным ключевым фактом; если факта в тексте нет — текст как есть. */
-export function ExplanationText({ explanation }: { explanation: ExplanationData }) {
+export function ExplanationText({ explanation }: { explanation: Explanation }) {
   const { text, keyFact } = explanation;
   const at = keyFact ? text.indexOf(keyFact) : -1;
   if (at < 0) return <>{text}</>;
