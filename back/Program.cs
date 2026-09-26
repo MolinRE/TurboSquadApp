@@ -76,7 +76,14 @@ app.MapPost("/api/auth/register", async (
     return result.IsValid
         ? Results.Created($"/api/users/{result.Response!.Id}", result.Response)
         : Results.ValidationProblem(result.Errors!);
-});
+})
+    .Accepts<RegistrationRequest>("application/json")
+    .Produces<RegistrationResponse>(StatusCodes.Status201Created)
+    .ProducesValidationProblem()
+    .WithName("RegisterConductor")
+    .WithSummary("Зарегистрировать Проводника")
+    .WithDescription("Создаёт учётную запись Проводника с выбранными Депо и Бригадой. Пароль принимается только для хеширования и никогда не возвращается.")
+    .AllowAnonymous();
 
 app.MapPost("/api/auth/login", async (
     LoginRequest request,
@@ -87,7 +94,14 @@ app.MapPost("/api/auth/login", async (
     return result.IsValid
         ? Results.Ok(result.Response)
         : Results.Unauthorized();
-});
+})
+    .Accepts<LoginRequest>("application/json")
+    .Produces<TokenResponse>()
+    .Produces(StatusCodes.Status401Unauthorized)
+    .WithName("Login")
+    .WithSummary("Войти и получить токен")
+    .WithDescription("Проверяет логин и пароль и возвращает Bearer-токен для защищённых API-методов. Ошибки входа не раскрывают причину отказа.")
+    .AllowAnonymous();
 
 app.MapGet("/api/auth/me", (HttpContext context) =>
     Results.Ok(new
@@ -96,38 +110,28 @@ app.MapGet("/api/auth/me", (HttpContext context) =>
         Username = context.User.Identity?.Name,
         Roles = context.User.FindAll(ClaimTypes.Role).Select(claim => claim.Value).Distinct().ToArray()
     }))
-    .RequireAuthorization();
+    .RequireAuthorization()
+    .WithName("GetCurrentUser")
+    .WithSummary("Получить текущего пользователя")
+    .WithDescription("Возвращает идентификатор, логин и роли пользователя из проверенного Bearer-токена.")
+    .Produces(StatusCodes.Status401Unauthorized);
 
 app.MapGet("/api/auth/role-check/manager", () => Results.Ok(new { Role = UserRoles.Manager }))
-    .RequireAuthorization(policy => policy.RequireRole(UserRoles.Manager));
+    .RequireAuthorization(policy => policy.RequireRole(UserRoles.Manager))
+    .WithName("CheckManagerRole")
+    .WithSummary("Проверить роль Руководителя")
+    .WithDescription("Тестовый защищённый метод: доступен только пользователю с ролью Руководителя.")
+    .Produces(StatusCodes.Status401Unauthorized)
+    .Produces(StatusCodes.Status403Forbidden);
 
 app.MapGet("/api/auth/role-check/methodologist", () => Results.Ok(new { Role = UserRoles.Methodologist }))
-    .RequireAuthorization(policy => policy.RequireRole(UserRoles.Methodologist));
-
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
-
-app.MapGet("/weatherforecast", () =>
-    {
-        var forecast = Enumerable.Range(1, 5).Select(index =>
-                new WeatherForecast
-                (
-                    DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-                    Random.Shared.Next(-20, 55),
-                    summaries[Random.Shared.Next(summaries.Length)]
-                ))
-            .ToArray();
-        return forecast;
-    })
-    .WithName("GetWeatherForecast");
+    .RequireAuthorization(policy => policy.RequireRole(UserRoles.Methodologist))
+    .WithName("CheckMethodologistRole")
+    .WithSummary("Проверить роль Методиста")
+    .WithDescription("Тестовый защищённый метод: доступен только пользователю с ролью Методиста.")
+    .Produces(StatusCodes.Status401Unauthorized)
+    .Produces(StatusCodes.Status403Forbidden);
 
 app.MapEventEndpoints();
 
 app.Run();
-
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
