@@ -49,7 +49,7 @@ public class TripApiTests(TripApiFactory factory) : IClassFixture<TripApiFactory
         Assert.Equal("failed", trip.Status);
         Assert.Equal((0, 70), trip.Scales);
         Assert.Contains("Лояльность пассажира", (string)trip.Json["result"]!["summary"]!);
-        Assert.Equal("TripNotRunning", await trip.Rejected($"/api/trips/{trip.Id}/variant", new { variantId = "a" }));
+        Assert.Equal("TripNotRunning", await trip.Rejected($"/api/trips/{trip.Id}/variant", new { eventId = "sit-33", stepId = "s2", variantId = "a" }));
 
         var debrief = await trip.Debrief();
         Assert.Equal(
@@ -73,7 +73,19 @@ public class TripApiTests(TripApiFactory factory) : IClassFixture<TripApiFactory
 
         Assert.Equal(("sit-33", "s3"), (trip.EventId, trip.StepId));
         Assert.Equal(["a"], trip.Json["step"]!["variants"]!.AsArray().Select(v => (string)v!["id"]!));
-        Assert.Equal("HiddenVariant", await trip.Rejected($"/api/trips/{trip.Id}/variant", new { variantId = "b" }));
+        Assert.Equal("HiddenVariant", await trip.Rejected($"/api/trips/{trip.Id}/variant", new { eventId = "sit-33", stepId = "s3", variantId = "b" }));
+    }
+
+    [Fact]
+    public async Task Repeated_answer_to_previous_step_is_rejected()
+    {
+        var trip = await TripClient.Start(factory, "business");
+        var med = new { eventId = "zastup", stepId = "med", variantId = "a" };
+        await trip.Choose("a");                       // медкомиссия пройдена, теперь приёмка поезда
+
+        Assert.Equal("StaleStep", await trip.Rejected($"/api/trips/{trip.Id}/variant", med));
+        Assert.Equal("StaleStep", await trip.Rejected($"/api/trips/{trip.Id}/timeout", new { eventId = "zastup", stepId = "med" }));
+        Assert.Equal("priemka", trip.StepId);
     }
 
     [Fact]
@@ -89,7 +101,7 @@ public class TripApiTests(TripApiFactory factory) : IClassFixture<TripApiFactory
         Assert.Equal(("s2", 75, 75), (trip.StepId, trip.Scales.Loyalty, trip.Scales.Safety));
         await trip.Choose("a");                       // №6 → удачный Исход, №33 s1, таймер 20 с
 
-        Assert.Equal("TimerNotExpired", await trip.Rejected($"/api/trips/{trip.Id}/timeout", new { }));
+        Assert.Equal("TimerNotExpired", await trip.Rejected($"/api/trips/{trip.Id}/timeout", new { eventId = trip.EventId, stepId = trip.StepId }));
         factory.Clock.Advance(TimeSpan.FromSeconds(21.5));
         await trip.Choose("a");                       // позже таймера больше чем на допуск: ветка таймаута
 
@@ -127,7 +139,7 @@ public class TripApiTests(TripApiFactory factory) : IClassFixture<TripApiFactory
         public async Task Choose(params string[] variantIds)
         {
             foreach (var variantId in variantIds)
-                Json = await Post($"/api/trips/{Id}/variant", new { variantId });
+                Json = await Post($"/api/trips/{Id}/variant", new { eventId = EventId, stepId = StepId, variantId });
         }
 
         public async Task Proactive(string optionId) => Json = await Post($"/api/trips/{Id}/proactive", new { optionId });

@@ -26,16 +26,16 @@ public static class TripEndpoints
             .WithDescription("Шкалы, Флаги, текущий Шаг с доступными Вариантами и моментом истечения таймера или Проактивный выбор, итог Рейса.");
 
         trips.MapPost("/{id:guid}/variant", (Guid id, ChooseVariantRequest request, HttpContext http, TripService service, CancellationToken ct) =>
-                service.ActAsync(UserId(http), id, new ChooseVariant(request.VariantId), ct))
+                service.ActAsync(UserId(http), id, new ChooseVariant(request.VariantId), new StepPosition(request.EventId, request.StepId), ct))
             .Produces<TripView>()
             .ProducesProblem(StatusCodes.Status409Conflict)
             .Produces(StatusCodes.Status404NotFound)
             .WithName("ChooseVariant")
             .WithSummary("Выбрать Вариант")
-            .WithDescription("Сервер перепроверяет Условия Варианта. Ответ позже таймера больше чем на 1 с засчитывается как таймаут.");
+            .WithDescription("eventId и stepId — Шаг, на который отвечает проводник: ответ на уже пройденный Шаг (повторный клик) отклоняется. Сервер перепроверяет Условия Варианта. Ответ позже таймера больше чем на 1 с засчитывается как таймаут.");
 
-        trips.MapPost("/{id:guid}/timeout", (Guid id, HttpContext http, TripService service, CancellationToken ct) =>
-                service.ActAsync(UserId(http), id, new TimeOut(), ct))
+        trips.MapPost("/{id:guid}/timeout", (Guid id, TimeOutRequest request, HttpContext http, TripService service, CancellationToken ct) =>
+                service.ActAsync(UserId(http), id, new TimeOut(), new StepPosition(request.EventId, request.StepId), ct))
             .Produces<TripView>()
             .ProducesProblem(StatusCodes.Status409Conflict)
             .Produces(StatusCodes.Status404NotFound)
@@ -44,7 +44,7 @@ public static class TripEndpoints
             .WithDescription("Клиент вызывает, когда обратный отсчёт дошёл до нуля. Сервер принимает, только если таймер истёк по его часам.");
 
         trips.MapPost("/{id:guid}/proactive", (Guid id, ChooseProactiveRequest request, HttpContext http, TripService service, CancellationToken ct) =>
-                service.ActAsync(UserId(http), id, new ChooseProactive(request.OptionId), ct))
+                service.ActAsync(UserId(http), id, new ChooseProactive(request.OptionId), at: null, ct))
             .Produces<TripView>()
             .ProducesProblem(StatusCodes.Status409Conflict)
             .Produces(StatusCodes.Status404NotFound)
@@ -69,6 +69,8 @@ public static class TripEndpoints
 
 public sealed record StartTripRequest(string ServiceClass);
 
-public sealed record ChooseVariantRequest(string VariantId);
+public sealed record ChooseVariantRequest(string EventId, string StepId, string VariantId);
+
+public sealed record TimeOutRequest(string EventId, string StepId);
 
 public sealed record ChooseProactiveRequest(string OptionId);

@@ -51,10 +51,13 @@ public sealed class TripService(AppDbContext dbContext, TimeProvider clock)
     /// Ход проводника. Ответ позже таймера больше чем на допуск становится таймаутом;
     /// «время вышло» раньше срока отклоняется — таймер считает сервер, а не клиент.
     /// </summary>
-    public async Task<IResult> ActAsync(Guid userId, Guid tripId, TripAction action, CancellationToken cancellationToken)
+    /// <param name="at">Шаг, на который отвечает проводник: ответ на уже пройденный Шаг (повторный клик) отклоняется.</param>
+    public async Task<IResult> ActAsync(Guid userId, Guid tripId, TripAction action, StepPosition? at, CancellationToken cancellationToken)
     {
         if (await LoadAsync(userId, tripId, cancellationToken) is not { } trip) return Results.NotFound();
         var (record, state) = trip;
+        if (at is not null && state.Status == TripStatus.Running && state.Current != at)
+            return Rejected("StaleStep", $"Ответ на Шаг {at.StepId} События {at.EventId}, а Рейс уже на другом Шаге");
 
         var now = clock.GetUtcNow();
         var expiresAt = ExpiresAt(record, state);
@@ -95,7 +98,8 @@ public sealed class TripService(AppDbContext dbContext, TimeProvider clock)
         if (record is null) return null;
 
         var versions = JsonSerializer.Deserialize<Dictionary<string, int>>(record.EventVersions)!;
-        var events = (await dbContext.EventDocuments.Where(r => versions.Keys.Contains(r.EventId)).ToListAsync(cancellationToken))
+        var eventIds = versions.Keys.ToList();
+        var events = (await dbContext.EventDocuments.Where(r => eventIds.Contains(r.EventId)).ToListAsync(cancellationToken))
             .Where(r => versions[r.EventId] == r.Version)
             .Select(r => JsonSerializer.Deserialize<EventDocument>(r.Document, EventJson.Options)!)
             .ToList();
