@@ -2,12 +2,10 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json.Nodes;
-using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace TurboSquadApp.Tests.Events;
 
-public class EventValidationEndpointTests(WebApplicationFactory<Program> factory)
-    : IClassFixture<WebApplicationFactory<Program>>
+public class EventValidationEndpointTests(TestAppFactory factory) : IClassFixture<TestAppFactory>
 {
     private async Task<JsonNode> PostForValidation(string eventJson)
     {
