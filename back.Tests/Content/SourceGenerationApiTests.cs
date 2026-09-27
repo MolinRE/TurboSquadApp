@@ -86,15 +86,19 @@ public class SourceGenerationApiTests
         }
     }
 
-    [Fact]
-    public async Task Generation_from_long_markdown_table_creates_row_linked_drafts()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Generation_from_long_markdown_table_creates_row_linked_drafts(bool outerPipes)
     {
         await using var factory = new TripApiFactory();
         var generator = factory.Services.GetRequiredService<FakeQuestionGenerationClient>();
+        var header = outerPipes ? "| Ситуация | Правило |" : "Ситуация | Правило";
+        var separator = outerPipes ? "| --- | --- |" : "--- | ---";
         generator.Response = prompt =>
         {
             var row = Regex.Match(prompt.Text, @"Проверить билет пассажира (\d+)\.");
-            if (!row.Success || !prompt.Text.Contains("| Ситуация | Правило |"))
+            if (!row.Success || !prompt.Text.Contains(header))
                 return "{\"questions\":[]}";
             var number = row.Groups[1].Value;
             return $$"""{"questions":[{{ValidQuestion($"Как проверить билет {number}?", $"Проверить билет пассажира {number}.")}}]}""";
@@ -102,8 +106,10 @@ public class SourceGenerationApiTests
         using var client = await factory.CreateUserClient(UserRoles.Methodologist);
         var filler = string.Concat(Enumerable.Repeat("Дополнительное правило для проводника. ", 12));
         var rows = Enumerable.Range(1, 35)
-            .Select(number => $"| Ситуация {number} | Проверить билет пассажира {number}. {filler}|");
-        var source = "## Посадка\n| Ситуация | Правило |\n| --- | --- |\n" + string.Join("\n", rows);
+            .Select(number => outerPipes
+                ? $"| Ситуация {number} | Проверить билет пассажира {number}. {filler}|"
+                : $"Ситуация {number} | Проверить билет пассажира {number}. {filler}");
+        var source = $"## Посадка\n{header}\n{separator}\n" + string.Join("\n", rows);
         var id = await CreateSource(client, source);
 
         var result = (await (await client.PostAsync($"/api/cms/sources/{id}/generate", null))
@@ -116,7 +122,7 @@ public class SourceGenerationApiTests
         {
             Assert.True(prompt.Text.Length < 2500);
             Assert.Contains("## Посадка", prompt.Text);
-            Assert.Contains("| Ситуация | Правило |", prompt.Text);
+            Assert.Contains(header, prompt.Text);
         });
         var drafts = (await client.GetFromJsonAsync<JsonNode>($"/api/cms/sources/{id}/drafts"))!.AsArray();
         Assert.Equal(35, drafts.Count);

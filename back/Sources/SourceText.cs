@@ -68,14 +68,14 @@ public static partial class SourceText
                 heading = line.Trim();
                 continue;
             }
-            if (line.TrimStart().StartsWith('|') && index + 1 < lines.Length && TableSeparator().IsMatch(lines[index + 1]))
+            if (line.Contains('|') && index + 1 < lines.Length && TableSeparator().IsMatch(lines[index + 1]))
             {
                 Flush();
                 tableHeader = line.Trim();
                 index++;
                 continue;
             }
-            if (tableHeader is not null && line.TrimStart().StartsWith('|'))
+            if (tableHeader is not null && line.Contains('|'))
             {
                 var context = heading is null ? tableHeader : $"{heading}\n{tableHeader}";
                 AddParts($"Таблица, строка {index + 1}", line.Trim(), context);
@@ -109,7 +109,7 @@ public static partial class SourceText
     [GeneratedRegex(@"^\s*#{1,6}\s+")]
     private static partial Regex MarkdownHeading();
 
-    [GeneratedRegex(@"^\s*\|[\s:|-]+\|\s*$")]
+    [GeneratedRegex(@"^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$")]
     private static partial Regex TableSeparator();
 
     [GeneratedRegex(@"(?<![\w.+-])[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}(?![\w.-])", RegexOptions.IgnoreCase)]
