@@ -1,13 +1,13 @@
 // Подменный модуль: правила Смены на свайпах в памяти браузера, пока нет API Смены.
-// Ведёт себя как сервер: карточка приходит без верной стороны, вердикт и Шкалы
-// считает он.
+// Ведёт себя как сервер: карточка приходит без верной стороны, вердикт, Шкалы
+// и время ответа считает он.
 
 import type {
   AnswerOutcome,
   ShiftState,
   ShiftStatus,
-  SwipeAnswer,
   ShiftCard,
+  SwipeAnswer,
   SwipesApi,
   Verdict,
 } from "./contract";
@@ -16,8 +16,10 @@ import { localQuestions, localScales, type SwipeQuestion } from "./local-data";
 const DECK_SIZE = 10;
 /** Задержка «сети», чтобы экран с первого дня жил с асинхронными ответами. */
 const LATENCY_MS = 150;
+/** Темп печати формулировки — калибруется (open-questions §2). */
+const TYPING_MS_PER_CHAR = 35;
 
-type AnswerRecord = { questionId: string; verdict: Verdict };
+type AnswerRecord = { questionId: string; verdict: Verdict; elapsedMs: number };
 
 type FakeShift = {
   id: string;
@@ -27,6 +29,8 @@ type FakeShift = {
   status: ShiftStatus;
   failedScale: string | null;
   answers: AnswerRecord[];
+  /** Когда показали текущую карточку; null — следующую ещё не просили. */
+  shownAt: number | null;
 };
 
 const shifts = new Map<string, FakeShift>();
@@ -53,6 +57,7 @@ function createShift(deck: SwipeQuestion[]): FakeShift {
     status: "running",
     failedScale: null,
     answers: [],
+    shownAt: Date.now(),
   };
   shifts.set(shift.id, shift);
   return shift;
@@ -64,6 +69,10 @@ function findShift(shiftId: string): FakeShift {
   return shift;
 }
 
+function readingMsOf(question: SwipeQuestion) {
+  return question.statement.length * TYPING_MS_PER_CHAR;
+}
+
 function toCard(question: SwipeQuestion): ShiftCard {
   return {
     questionId: question.id,
@@ -73,6 +82,7 @@ function toCard(question: SwipeQuestion): ShiftCard {
     topic: question.topic,
     serviceClasses: question.serviceClasses,
     isRepeat: false,
+    readingMs: readingMsOf(question),
   };
 }
 
@@ -82,6 +92,10 @@ function mistakesOf(shift: FakeShift): SwipeQuestion[] {
     .map((answer) => shift.deck.find((question) => question.id === answer.questionId)!);
 }
 
+function averageOf(values: number[]) {
+  return values.length ? Math.round(values.reduce((sum, value) => sum + value, 0) / values.length) : null;
+}
+
 function toState(shift: FakeShift): ShiftState {
   const running = shift.status === "running";
   return structuredClone({
@@ -89,13 +103,14 @@ function toState(shift: FakeShift): ShiftState {
     status: shift.status,
     scales: localScales.map((scale) => ({ ...scale, value: shift.scales[scale.code] })),
     progress: { done: shift.answers.length, total: shift.deck.length },
-    card: running ? toCard(shift.deck[shift.position]) : null,
+    card: running && shift.shownAt !== null ? toCard(shift.deck[shift.position]) : null,
     result: running
       ? null
       : {
           failedScale: shift.failedScale,
           firstTryCorrect: shift.answers.filter((answer) => answer.verdict === "correct").length,
           total: shift.deck.length,
+          averageAnswerMs: averageOf(shift.answers.map((answer) => answer.elapsedMs)),
           mistakes: mistakesOf(shift).map((question) => ({
             questionId: question.id,
             statement: question.statement,
@@ -149,18 +164,28 @@ export const fakeSwipesApi: SwipesApi = {
     return toState(findShift(shiftId));
   },
 
+  async showNextCard(shiftId) {
+    await delay();
+    const shift = findShift(shiftId);
+    if (shift.status === "running" && shift.shownAt === null) shift.shownAt = Date.now();
+    return toState(shift);
+  },
+
   async answer(shiftId, questionId, answer): Promise<AnswerOutcome> {
+    const answeredAt = Date.now();
     await delay();
     const shift = findShift(shiftId);
     const question = shift.deck[shift.position];
-    if (shift.status !== "running" || question.id !== questionId) {
+    if (shift.status !== "running" || shift.shownAt === null || question.id !== questionId) {
       throw new Error("На эту карточку уже ответили");
     }
 
+    const elapsedMs = Math.max(0, answeredAt - shift.shownAt - readingMsOf(question));
     const verdict = verdictOf(question, answer);
     const scaleChanges = applyDeltas(shift, deltasOf(question, answer));
-    shift.answers.push({ questionId, verdict });
+    shift.answers.push({ questionId, verdict, elapsedMs });
     shift.position += 1;
+    shift.shownAt = null;
 
     const broken = localScales.find((scale) => shift.scales[scale.code] <= scale.failureThreshold);
     if (broken) {
@@ -175,6 +200,7 @@ export const fakeSwipesApi: SwipesApi = {
       correctSide: question.correct,
       explanation: structuredClone(question.explanation),
       scaleChanges,
+      elapsedMs,
       shift: toState(shift),
     };
   },
