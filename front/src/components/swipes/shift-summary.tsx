@@ -50,7 +50,7 @@ export function ShiftSummary({
 }
 
 /** «Что повторить»: Вопросы с ошибкой или «Не знаю» — формулировка, Пояснение и пункт Источника. */
-function WhatToRepeat({ mistakes }: { mistakes: MistakeItem[] }) {
+export function WhatToRepeat({ mistakes }: { mistakes: MistakeItem[] }) {
   return (
     <section className="flex flex-col gap-3 rounded-xl bg-card p-5">
       <h2 className="flex items-baseline justify-between gap-2 text-lg font-extrabold">
@@ -201,7 +201,7 @@ function CyclesSummary({
 type SummaryAction = { label: string; onClick: () => void };
 
 /** Главное действие во всю ширину; под ним «К играм», а если есть второе действие — оба в ряд. */
-function SummaryActions({ primary, secondary }: { primary: SummaryAction; secondary?: SummaryAction }) {
+export function SummaryActions({ primary, secondary }: { primary: SummaryAction; secondary?: SummaryAction }) {
   const outlineClass = "h-12 bg-card text-base font-bold";
   return (
     <div className="mt-auto grid gap-2">
