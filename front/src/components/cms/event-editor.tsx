@@ -12,6 +12,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { EventForm } from "@/components/cms/event-form";
 
 function editableJson(version: EventVersion): string {
   const document = JSON.parse(version.document) as Record<string, unknown>;
@@ -37,6 +38,7 @@ export function EventEditor({ eventId }: { eventId: string }) {
   const [loading, setLoading] = useState(true);
   const [accessDenied, setAccessDenied] = useState(false);
   const [versionConflict, setVersionConflict] = useState(false);
+  const [view, setView] = useState<"form" | "json">("form");
 
   const showError = useCallback((reason: unknown) => {
     if (reason instanceof ApiError) {
@@ -149,9 +151,17 @@ export function EventEditor({ eventId }: { eventId: string }) {
           </label>
           <p className="text-xs text-muted-foreground">{selectedVersion === summary.latestVersion ? `Следующая версия: v${summary.latestVersion + 1}` : "Прошлая версия доступна только для просмотра"}</p>
         </div>
+        <div className="inline-flex rounded-lg bg-muted p-1 text-sm font-semibold" role="tablist">
+          {([["form", "Форма"], ["json", "JSON"]] as const).map(([value, label]) => (
+            <button key={value} type="button" role="tab" aria-selected={view === value} onClick={() => setView(value)}
+              className={view === value ? "rounded-md bg-card px-3 py-1 shadow-sm" : "px-3 py-1 text-muted-foreground"}>{label}</button>
+          ))}
+        </div>
+        {view === "form" ? <EventForm document={document} readOnly={selectedVersion !== summary.latestVersion} onChange={(json) => { setDocument(json); setReport(null); setMessage(null); }} /> : <>
         <label htmlFor="event-json" className="block text-sm font-semibold">JSON События</label>
         <textarea id="event-json" spellCheck={false} className="min-h-[28rem] w-full resize-y rounded-lg border border-input bg-transparent p-3 font-mono text-xs leading-relaxed outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50" value={document} readOnly={selectedVersion !== summary.latestVersion} onChange={(event) => { setDocument(event.target.value); setReport(null); setMessage(null); }} />
         <p className="text-xs text-muted-foreground">Поменяйте переход `transitions` или изменение Шкалы `scaleDeltas` у Варианта, затем проверьте граф.</p>
+        </>}
         {selectedVersion === summary.latestVersion && <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => void check()} disabled={busy}>{busy && <LoaderCircle className="animate-spin" aria-hidden />}Проверить</Button>
           <Button onClick={() => void publish()} disabled={busy}>Опубликовать новую версию</Button>
