@@ -12,7 +12,10 @@ using TurboSquadApp.Voice;
 
 namespace TurboSquadApp.Tests.Trips;
 
-/// <summary>Приложение для тестов API Рейса: база в памяти с засеянным контентом и часы, которые двигает тест.</summary>
+/// <summary>
+/// Приложение для тестов API игр: база в памяти с засеянным контентом, часы, которые двигает тест,
+/// и случайность с зерном — колода Смены на свайпах одна и та же от запуска к запуску.
+/// </summary>
 public sealed class TripApiFactory : WebApplicationFactory<Program>
 {
     private readonly string _database = Guid.NewGuid().ToString();
@@ -28,6 +31,7 @@ public sealed class TripApiFactory : WebApplicationFactory<Program>
             services.RemoveAll(typeof(IDbContextOptionsConfiguration<AppDbContext>));
             services.AddDbContext<AppDbContext>(options => options.UseInMemoryDatabase(_database));
             services.AddSingleton<TimeProvider>(Clock);
+            services.AddSingleton(new Random(27));
             services.AddSingleton<FakeVoicePipeline>();
             services.AddSingleton<IVoicePipeline>(sp => sp.GetRequiredService<FakeVoicePipeline>());
             services.AddSingleton<FakeLlmClient>();
@@ -35,10 +39,13 @@ public sealed class TripApiFactory : WebApplicationFactory<Program>
         });
 
     /// <summary>Клиент от имени нового Проводника.</summary>
-    public async Task<HttpClient> CreateConductorClient()
+    public Task<HttpClient> CreateConductorClient() => CreateUserClient(UserRoles.Conductor);
+
+    /// <summary>Клиент от имени нового пользователя с одной ролью.</summary>
+    public async Task<HttpClient> CreateUserClient(string role)
     {
-        var user = new AppUser { Id = Guid.NewGuid(), Username = $"conductor-{Guid.NewGuid():N}", DisplayName = "Проводник" };
-        user.Roles.Add(new AppUserRole { UserId = user.Id, Role = UserRoles.Conductor });
+        var user = new AppUser { Id = Guid.NewGuid(), Username = $"{role}-{Guid.NewGuid():N}", DisplayName = "Тестовый пользователь" };
+        user.Roles.Add(new AppUserRole { UserId = user.Id, Role = role });
         using (var scope = Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
