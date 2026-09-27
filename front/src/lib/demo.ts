@@ -40,6 +40,3 @@ export const demoAccounts: DemoAccount[] = [
     href: "/analytics/blind-spots",
   },
 ];
-
-/** Уведомлений в API пока нет: число в колокольчике шапки — демонстрационное. */
-export const demoUnreadNotifications = 2;
