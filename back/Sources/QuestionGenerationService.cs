@@ -53,8 +53,10 @@ public sealed class QuestionGenerationService(AppDbContext db, IQuestionGenerati
             await slots.WaitAsync(cancellationToken);
             try
             {
+                var context = section.Context is null ? string.Empty :
+                    $"Контекст Источника: {SourceText.RemovePersonalData(section.Context)}\n";
                 var prompt = new QuestionGenerationPrompt(SourceText.RemovePersonalData(source.Title), section.Reference,
-                    SourceText.RemovePersonalData(section.Text), topics, null);
+                    context + SourceText.RemovePersonalData(section.Text), topics, null);
                 return (Section: section, Prompt: prompt, Response: await CallAsync(prompt, cancellationToken));
             }
             finally { slots.Release(); }
@@ -68,9 +70,13 @@ public sealed class QuestionGenerationService(AppDbContext db, IQuestionGenerati
                 var feedback = new List<string>();
                 if (response is null)
                     feedback.Add("Модель недоступна или вернула ошибку");
+                else if (response.FinishReason == "length")
+                    feedback.Add("Модель исчерпала лимит ответа");
+                else if (string.IsNullOrWhiteSpace(response.Content))
+                    feedback.Add("Модель вернула пустой ответ");
                 else
                 {
-                    foreach (var candidate in ReadCandidates(response, feedback))
+                    foreach (var candidate in ReadCandidates(response.Content, feedback))
                     {
                         if (candidate is null)
                         {
@@ -80,7 +86,7 @@ public sealed class QuestionGenerationService(AppDbContext db, IQuestionGenerati
                         var record = Record(candidate, sourceId, source.Title, section.Reference);
                         var report = QuestionValidator.ValidateForPublication(record, directory);
                         if (string.IsNullOrWhiteSpace(record.Quote) ||
-                            !initialPrompt.Text.Contains(record.Quote, StringComparison.Ordinal))
+                            !SourceText.RemovePersonalData(section.Text).Contains(record.Quote, StringComparison.Ordinal))
                             feedback.Add("Цитата должна дословно присутствовать в очищенном пункте Источника");
                         else if (!topics.Contains(record.Topic))
                             feedback.Add("Тема должна быть из справочника");
@@ -102,18 +108,21 @@ public sealed class QuestionGenerationService(AppDbContext db, IQuestionGenerati
                     errors.Add($"Пункт {section.Reference}: {string.Join("; ", feedback.Distinct())}");
                     break;
                 }
-                var cleanedResponse = response is null ? string.Empty : SourceText.RemovePersonalData(response);
+                var cleanedResponse = response is null ? string.Empty : SourceText.RemovePersonalData(response.Content);
+                var needsMoreRoom = response is not null &&
+                    (response.FinishReason == "length" || string.IsNullOrWhiteSpace(response.Content));
                 response = await CallAsync(initialPrompt with
                 {
                     Feedback = string.Join("; ", feedback.Distinct()),
                     PreviousOutput = cleanedResponse[..Math.Min(cleanedResponse.Length, 20_000)],
+                    MaxTokens = needsMoreRoom ? initialPrompt.MaxTokens + 4_000 * (attempt + 1) : initialPrompt.MaxTokens,
                 }, cancellationToken);
             }
         }
         return Results.Ok(new GenerationResult(drafts.Count, duplicates, errors, drafts));
     }
 
-    private async Task<string?> CallAsync(QuestionGenerationPrompt prompt, CancellationToken cancellationToken)
+    private async Task<QuestionGenerationResponse?> CallAsync(QuestionGenerationPrompt prompt, CancellationToken cancellationToken)
     {
         try { return await generator.GenerateAsync(prompt, cancellationToken); }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
