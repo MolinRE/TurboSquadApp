@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using TurboSquadApp.Content;
 using TurboSquadApp.Data;
 using TurboSquadApp.Events;
+using TurboSquadApp.Questions;
 
 namespace TurboSquadApp.Tests.Content;
 
@@ -58,6 +59,8 @@ public class ContentSeederTests
         Assert.All(questions, q => Assert.Equal(("swipe", "published"), (q.Type, q.Status)));
         var pet = questions.Single(q => q.Id == "sw-pet-carrier");
         Assert.Equal("left", JsonNode.Parse(pet.Options)!["correct"]!.GetValue<string>());
+        Assert.Equal(SwipeSide.Left, Assert.IsType<SwipeOptions>(pet.ReadOptions()).Correct);
+        Assert.All(questions, q => Assert.True(QuestionValidator.ValidateForPublication(q, SeedContent.Directory).IsValid));
         Assert.Equal(("только в переноске", "Ситуации на борту, №4"), (pet.ExplanationKeyFact, pet.Source));
     }
 

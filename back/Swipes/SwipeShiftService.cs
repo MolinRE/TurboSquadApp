@@ -227,7 +227,7 @@ public sealed class SwipeShiftService(AppDbContext dbContext, TimeProvider clock
     }
 
     private static ShiftQuestion ShiftQuestionOf(QuestionRecord record, IReadOnlyDictionary<string, string> classNames) => new(
-        record.Id, record.Statement, JsonSerializer.Deserialize<SwipeOptions>(record.Options, EventJson.Options)!,
+        record.Id, record.Statement, (SwipeOptions)record.ReadOptions(),
         new Explanation(record.ExplanationText, record.ExplanationKeyFact, record.Source), record.Topic,
         JsonSerializer.Deserialize<List<string>>(record.ServiceClasses)!
             .Select(code => new ServiceClassRef(code, classNames.GetValueOrDefault(code, code)))

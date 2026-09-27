@@ -72,26 +72,23 @@ public sealed class ContentSeeder(AppDbContext dbContext)
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
-    /// <summary>Вопрос из сидов — опубликованным. Битый сид (свайп с чужой Шкалой или Классом) останавливает запуск.</summary>
+    /// <summary>Вопрос из сидов — опубликованным. Битый сид останавливает запуск.</summary>
     private static QuestionRecord QuestionRecordOf(SeedQuestion seed, ContentDirectory directory)
     {
-        if (seed.Type != QuestionTypes.Swipe)
-            throw new InvalidOperationException($"Seed question '{seed.Id}': only swipe questions are seeded, got '{seed.Type}'.");
-        var options = seed.Options.Deserialize<SwipeOptions>(EventJson.Options)!;
-        var unknownScales = options.Right.ScaleDeltas.Keys.Concat(options.Left.ScaleDeltas.Keys)
-            .Where(code => directory.Scales.All(scale => scale.Code != code));
-        var unknownClasses = seed.ServiceClasses.Where(code => directory.Classes.All(serviceClass => serviceClass.Code != code));
-        if (unknownScales.Concat(unknownClasses).ToList() is [_, ..] unknown)
-            throw new InvalidOperationException($"Seed question '{seed.Id}' refers to unknown codes: {string.Join(", ", unknown)}.");
-
-        return new QuestionRecord
+        var question = new QuestionRecord
         {
             Id = seed.Id, Type = seed.Type, Status = QuestionStatuses.Published, Statement = seed.Statement,
-            Options = JsonSerializer.Serialize(options, EventJson.Options),
+            Options = seed.Options.ValueKind == JsonValueKind.Undefined ? "{}" : seed.Options.GetRawText(),
             ExplanationText = seed.Explanation.Text, ExplanationKeyFact = seed.Explanation.KeyFact,
             Quote = seed.Explanation.Quote, Source = seed.Explanation.Source, Topic = seed.Topic,
             Categories = JsonSerializer.Serialize(seed.Categories), ServiceClasses = JsonSerializer.Serialize(seed.ServiceClasses),
             BaseFrequency = seed.BaseFrequency, TimeLimitSec = seed.TimeLimitSec,
         };
+        var report = QuestionValidator.ValidateForPublication(question, directory);
+        if (!report.IsValid)
+            throw new InvalidOperationException($"Seed question '{seed.Id}' is invalid: " +
+                string.Join("; ", report.Errors.Select(error => $"{error.Path}: {error.Message}")));
+        question.SetOptions(question.ReadOptions());
+        return question;
     }
 }
