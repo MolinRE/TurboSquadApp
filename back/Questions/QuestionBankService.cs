@@ -20,20 +20,21 @@ public sealed class QuestionEditorInput
     public IReadOnlyList<string> ServiceClasses { get; set; } = [];
     public double BaseFrequency { get; set; } = 1;
     public int? TimeLimitSec { get; set; }
+    public int KnowledgeCost { get; set; } = 10;
 }
 
 public sealed record QuestionView(
     string Id, string Type, string Status, string Statement, JsonElement Options,
     string ExplanationText, string ExplanationKeyFact, string? Quote, string Source, string Topic,
     IReadOnlyList<string> Categories, IReadOnlyList<string> ServiceClasses,
-    double BaseFrequency, int? TimeLimitSec)
+    double BaseFrequency, int? TimeLimitSec, int KnowledgeCost)
 {
     public static QuestionView Of(QuestionRecord record) => new(
         record.Id, record.Type, record.Status, record.Statement, JsonSerializer.Deserialize<JsonElement>(record.Options),
         record.ExplanationText, record.ExplanationKeyFact, record.Quote, record.Source, record.Topic,
         JsonSerializer.Deserialize<List<string>>(record.Categories) ?? [],
         JsonSerializer.Deserialize<List<string>>(record.ServiceClasses) ?? [],
-        record.BaseFrequency, record.TimeLimitSec);
+        record.BaseFrequency, record.TimeLimitSec, record.KnowledgeCost);
 }
 
 public sealed record QuestionCatalog(
@@ -182,6 +183,7 @@ public sealed class QuestionBankService(AppDbContext db)
         record.ServiceClasses = JsonSerializer.Serialize(input.ServiceClasses ?? []);
         record.BaseFrequency = input.BaseFrequency;
         record.TimeLimitSec = input.TimeLimitSec;
+        record.KnowledgeCost = input.KnowledgeCost;
     }
 
     private static bool KnownType(string type) => type is

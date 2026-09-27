@@ -35,7 +35,8 @@ public sealed record SeedEvent(EventDocument Document, string Json);
 /// <summary>Вопрос из сидов (PRD §9.1). Options — варианты по типу Вопроса, для свайпа — SwipeOptions.</summary>
 public sealed record SeedQuestion(
     string Id, string Type, string Statement, JsonElement Options, SeedExplanation Explanation, string Topic,
-    IReadOnlyList<string> Categories, IReadOnlyList<string> ServiceClasses, double BaseFrequency = 1, int? TimeLimitSec = null);
+    IReadOnlyList<string> Categories, IReadOnlyList<string> ServiceClasses, double BaseFrequency = 1, int? TimeLimitSec = null,
+    int KnowledgeCost = 10);
 
 /// <summary>Пояснение: текст с ключевым фактом, пункт Источника и цитата из него.</summary>
 public sealed record SeedExplanation(string Text, string KeyFact, string Source, string? Quote = null);

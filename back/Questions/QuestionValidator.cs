@@ -31,6 +31,7 @@ public static class QuestionValidator
         Required("explanationKeyFact", question.ExplanationKeyFact);
         Required("source", question.Source);
         if (question.TimeLimitSec is null or <= 0) Error("timeLimitSec", "Лимит времени должен быть положительным");
+        if (question.KnowledgeCost <= 0) Error("knowledgeCost", "Стоимость по Знанию должна быть положительной");
         CheckStringArray(question.Categories, "categories");
         var serviceClasses = CheckStringArray(question.ServiceClasses, "serviceClasses");
 

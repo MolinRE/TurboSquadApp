@@ -6,7 +6,7 @@ namespace TurboSquadApp.Data;
 /// <summary>
 /// Вопрос банка (PRD §9.1), общий для Смены на свайпах, Блица и будущего банка в CMS. Вычисляемое
 /// (% успешных ответов, реальное время ответа, Личная частота показа) здесь не хранится.
-/// Стоимость по Компетенциям придёт вместе с Оценкой.
+/// Стоимость по Знанию — первый срез Оценки; остальные Компетенции придут позже.
 /// </summary>
 public sealed class QuestionRecord
 {
@@ -57,6 +57,7 @@ public sealed class QuestionRecord
 
     /// <summary>Время на ответ, с; null — лимит игры (для Циклов этапа 2).</summary>
     public int? TimeLimitSec { get; set; }
+    public int KnowledgeCost { get; set; } = 10;
 }
 
 internal static class QuestionModel
@@ -80,6 +81,7 @@ internal static class QuestionModel
             entity.Property(question => question.Topic).HasMaxLength(100).IsRequired();
             entity.Property(question => question.Categories).HasColumnType("jsonb").IsRequired();
             entity.Property(question => question.ServiceClasses).HasColumnType("jsonb").IsRequired();
+            entity.Property(question => question.KnowledgeCost).HasDefaultValue(10);
             entity.HasIndex(question => new { question.Type, question.Status });
         });
     }
