@@ -39,6 +39,45 @@ public sealed class SwipeShiftService(AppDbContext dbContext, TimeProvider clock
         return Results.Ok(await ViewAsync(record, play, cancellationToken));
     }
 
+    public async Task<IResult> ListDebriefsAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        var history = await dbContext.SwipeShifts
+            .Where(shift => shift.UserId == userId && shift.FinishedAt != null)
+            .OrderByDescending(shift => shift.FinishedAt)
+            .Select(shift => new SwipeDebriefListItem(
+                shift.Id, shift.Status, shift.Cycle, shift.StartedAt, shift.FinishedAt!.Value))
+            .ToListAsync(cancellationToken);
+        return Results.Ok(history);
+    }
+
+    public async Task<IResult> DebriefAsync(Guid userId, Guid shiftId, CancellationToken cancellationToken)
+    {
+        var record = await dbContext.SwipeShifts.SingleOrDefaultAsync(
+            shift => shift.Id == shiftId && shift.UserId == userId, cancellationToken);
+        if (record is null) return Results.NotFound();
+        if (record.FinishedAt is null)
+            return Rejected("ShiftNotFinished", "Разбор строится после Смены: Смена ещё не закончена");
+
+        var rows = await dbContext.SwipeAnswers.Where(answer => answer.ShiftId == shiftId)
+            .OrderBy(answer => answer.Seq).ToListAsync(cancellationToken);
+        var answers = new List<SwipeDebriefAnswer>();
+        foreach (var row in rows)
+        {
+            var snapshot = row.QuestionSnapshot is { } json
+                ? JsonSerializer.Deserialize<SwipeAnswerSnapshot>(json, ColumnJson)!
+                : SnapshotOf(ShiftQuestionOf(
+                    await dbContext.Questions.SingleAsync(q => q.Id == row.QuestionId, cancellationToken),
+                    new Dictionary<string, string>()));
+            answers.Add(new SwipeDebriefAnswer(
+                row.Seq, row.QuestionId, snapshot.Statement, snapshot.RightLabel, snapshot.LeftLabel,
+                snapshot.CorrectSide, row.Answer, row.Verdict, row.IsRepeat, row.ElapsedMs, row.KnowledgeDelta,
+                JsonSerializer.Deserialize<Dictionary<string, int>>(row.ScaleChanges, ColumnJson)!, snapshot.Explanation));
+        }
+        var scaleNames = JsonSerializer.Deserialize<List<ScaleDefinition>>(record.Scales, ColumnJson)!
+            .ToDictionary(scale => scale.Code, scale => scale.Name);
+        return Results.Ok(new SwipeDebrief(record.Id, record.Status, record.FailureScale, record.Cycle, scaleNames, answers));
+    }
+
     /// <summary>Показать следующую карточку: с этого момента идёт время на неё. Повторный вызов её не меняет.</summary>
     public async Task<IResult> ShowNextCardAsync(Guid userId, Guid shiftId, CancellationToken cancellationToken)
     {
@@ -140,6 +179,7 @@ public sealed class SwipeShiftService(AppDbContext dbContext, TimeProvider clock
             Answer = timedOut ? TimedOutAnswer : Code(answer), Verdict = Code(settled.Verdict), IsRepeat = settled.IsRepeat,
             ElapsedMs = elapsedMs, ScaleChanges = JsonSerializer.Serialize(settled.ScaleChanges, ColumnJson), AnsweredAt = now,
             KnowledgeDelta = knowledgeDelta,
+            QuestionSnapshot = JsonSerializer.Serialize(SnapshotOf(settled.Question), ColumnJson),
         });
         record.CardShownAt = null;
         record.Status = Code(play.Status);
@@ -236,7 +276,11 @@ public sealed class SwipeShiftService(AppDbContext dbContext, TimeProvider clock
         new Explanation(record.ExplanationText, record.ExplanationKeyFact, record.Source), record.Topic,
         JsonSerializer.Deserialize<List<string>>(record.ServiceClasses)!
             .Select(code => new ServiceClassRef(code, classNames.GetValueOrDefault(code, code)))
-            .ToList(), record.KnowledgeCost);
+        .ToList(), record.KnowledgeCost);
+
+    private static SwipeAnswerSnapshot SnapshotOf(ShiftQuestion question) => new(
+        question.Statement, question.Options.Right.Label, question.Options.Left.Label,
+        Code(question.Options.Correct), question.Explanation);
 
     /// <summary>Значение перечисления так же, как в JSON API: calm, running, correct.</summary>
     private static string Code(Enum value) => JsonNamingPolicy.CamelCase.ConvertName(value.ToString());

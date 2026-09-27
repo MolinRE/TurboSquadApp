@@ -1,5 +1,5 @@
 import { apiJson } from "@/lib/api";
-import type { AnswerOutcome, ShiftState, SwipesApi } from "./contract";
+import type { AnswerOutcome, ShiftState, SwipeDebrief, SwipeDebriefListItem, SwipesApi } from "./contract";
 
 const shiftsPath = "/api/swipe-shifts";
 const shiftPath = (shiftId: string) => `${shiftsPath}/${encodeURIComponent(shiftId)}`;
@@ -18,3 +18,9 @@ export const swipesApi: SwipesApi = {
   startNextCycle: (shiftId) => post<ShiftState>(`${shiftPath(shiftId)}/next-cycle`),
   startWorkOnMistakes: (shiftId) => post<ShiftState>(`${shiftPath(shiftId)}/work-on-mistakes`),
 };
+
+export const getSwipeDebrief = (shiftId: string) =>
+  apiJson<SwipeDebrief>(`${shiftPath(shiftId)}/debrief`);
+
+export const listSwipeDebriefs = () =>
+  apiJson<SwipeDebriefListItem[]>(`${shiftsPath}/debriefs`);

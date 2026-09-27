@@ -11,6 +11,15 @@ public sealed class EventDocumentRecord
     public DateTimeOffset PublishedAt { get; set; }
 }
 
+/// <summary>Черновик События; в Рейс попадают только опубликованные EventDocumentRecord.</summary>
+public sealed class EventDraftRecord
+{
+    public Guid Id { get; set; }
+    public Guid? SourceId { get; set; }
+    public string Document { get; set; } = string.Empty;
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
 /// <summary>Шкала из справочника (PRD §5.3).</summary>
 public sealed class ScaleRecord
 {
@@ -49,6 +58,14 @@ internal static class ContentModel
             entity.HasKey(record => new { record.EventId, record.Version });
             entity.Property(record => record.EventId).HasMaxLength(100);
             entity.Property(record => record.Document).HasColumnType("jsonb").IsRequired();
+        });
+
+        modelBuilder.Entity<EventDraftRecord>(entity =>
+        {
+            entity.HasKey(draft => draft.Id);
+            entity.Property(draft => draft.Document).HasColumnType("jsonb").IsRequired();
+            entity.HasOne<SourceRecord>().WithMany().HasForeignKey(draft => draft.SourceId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<ScaleRecord>(entity =>

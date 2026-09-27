@@ -17,12 +17,21 @@ public static class SourceEndpoints
         sources.MapGet("/{id:guid}", (Guid id, SourceService service, CancellationToken ct) =>
                 service.GetAsync(id, ct))
             .WithName("GetCmsSource");
-        sources.MapPost("/{id:guid}/generate", (Guid id, QuestionGenerationService service, CancellationToken ct) =>
-                service.GenerateAsync(id, ct))
+        sources.MapPost("/{id:guid}/generate", async (Guid id, HttpRequest request,
+                QuestionGenerationService service, CancellationToken ct) =>
+            {
+                var input = request.ContentLength > 0
+                    ? await request.ReadFromJsonAsync<GenerationModelRequest>(ct) : null;
+                return await service.GenerateAsync(id, input?.Model, ct);
+            })
             .WithName("GenerateCmsSourceQuestions");
         sources.MapGet("/{id:guid}/drafts", (Guid id, QuestionGenerationService service, CancellationToken ct) =>
                 service.DraftsAsync(id, ct))
             .WithName("ListCmsSourceDrafts");
+        sources.MapPost("/{id:guid}/generate-events", async (Guid id, GenerationModelRequest input,
+                EventGenerationService service, CancellationToken ct) =>
+                await service.GenerateAsync(id, input.Model, ct))
+            .WithName("GenerateCmsSourceEvents");
         return app;
     }
 }

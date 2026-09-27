@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
-import { ScreenPlaceholder } from "@/components/shell/screen-placeholder";
+import { LeaderboardOverview } from "@/components/leaderboard/leaderboard-overview";
 import { getScreen } from "@/lib/screens";
 
 export const metadata: Metadata = { title: getScreen("leaderboard").title };
 
 export default function Page() {
-  return <ScreenPlaceholder id="leaderboard" />;
+  return <LeaderboardOverview />;
 }

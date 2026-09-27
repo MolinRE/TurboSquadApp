@@ -14,7 +14,7 @@ public sealed record Debrief(
     [JsonIgnore]
     public IEnumerable<DebriefEvent> Events => Items.OfType<DebriefEvent>();
 
-    public static Debrief Build(TripState state)
+    public static Debrief Build(TripState state, IReadOnlyList<DebriefDecisionFacts>? decisionFacts = null)
     {
         if (!state.IsFinished)
             throw new InvalidOperationException("Разбор строится после Рейса: Рейс ещё не закончен");
@@ -22,6 +22,7 @@ public sealed record Debrief(
 
         var items = new List<DebriefItem>();
         var decisions = new List<DebriefDecision>();
+        var decisionIndex = 0;
         foreach (var entry in state.Journal)
         {
             switch (entry)
@@ -31,7 +32,9 @@ public sealed record Debrief(
                     items.Add(new DebriefProactiveChoice(proactive.Situation, proactive.Options.Single(o => o.Id == chosen.OptionId).Text));
                     break;
                 case Decision decision:
-                    decisions.Add(DecisionOf(content, decision));
+                    decisions.Add(DecisionOf(content, decision,
+                        decisionFacts is not null ? decisionFacts[decisionIndex] : null));
+                    decisionIndex++;
                     break;
                 case EventFinished finished:
                     var ev = content.Event(finished.EventId);
@@ -68,7 +71,7 @@ public sealed record Debrief(
         return $"Срыв рейса: Шкала «{scale.Name}» упала до {state.Scales[scale.Code]}{reason}";
     }
 
-    private static DebriefDecision DecisionOf(TripContent content, Decision decision)
+    private static DebriefDecision DecisionOf(TripContent content, Decision decision, DebriefDecisionFacts? facts = null)
     {
         var ev = content.Event(decision.EventId);
         var step = ev.Steps.Single(s => s.Id == decision.StepId);
@@ -79,7 +82,8 @@ public sealed record Debrief(
             .ToList();
         return new DebriefDecision(
             step.Id, step.Situation, decision.VariantId, decision.TimedOut, reaction.Text, changes, decision.FlagsSet,
-            reaction.RoleStages ?? [], reaction.Comment, reaction.Source ?? ev.Source, decision.CriticalError);
+            reaction.RoleStages ?? [], reaction.Comment, reaction.Source ?? ev.Source, decision.CriticalError,
+            facts?.KnowledgeDelta ?? 0, facts?.ElapsedMs);
     }
 }
 
@@ -99,7 +103,11 @@ public sealed record DebriefEvent(
 public sealed record DebriefDecision(
     string StepId, string Situation, string? VariantId, bool TimedOut, string Text,
     IReadOnlyList<DebriefScaleChange> Changes, IReadOnlyList<string> FlagsSet, IReadOnlyList<string> RoleStages,
-    string? Comment, string? Source, bool CriticalError);
+    string? Comment, string? Source, bool CriticalError, int KnowledgeDelta = 0, int? ElapsedMs = null);
+
+public sealed record DebriefDecisionFacts(int KnowledgeDelta, int? ElapsedMs);
+
+public sealed record TripDebriefListItem(Guid Id, string Result, DateTimeOffset StartedAt, DateTimeOffset FinishedAt);
 
 /// <summary>Изменение Шкалы: по контенту (Nominal) и фактически после обрезки по диапазону (Applied).</summary>
 public sealed record DebriefScaleChange(string Scale, string Name, int Nominal, int Applied, int Before, int After);

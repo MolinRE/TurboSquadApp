@@ -39,6 +39,8 @@ public sealed class TripApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<ILlmClient>(sp => sp.GetRequiredService<FakeLlmClient>());
             services.AddSingleton<FakeQuestionGenerationClient>();
             services.AddSingleton<IQuestionGenerationClient>(sp => sp.GetRequiredService<FakeQuestionGenerationClient>());
+            services.AddSingleton<FakeEventGenerationClient>();
+            services.AddSingleton<IEventGenerationClient>(sp => sp.GetRequiredService<FakeEventGenerationClient>());
         });
 
     /// <summary>Клиент от имени нового Проводника.</summary>
@@ -96,6 +98,18 @@ public sealed class FakeQuestionGenerationClient : IQuestionGenerationClient
     {
         Prompts.Add(prompt);
         return Task.FromResult(new QuestionGenerationResponse(Response(prompt), FinishReason(prompt)));
+    }
+}
+
+public sealed class FakeEventGenerationClient : IEventGenerationClient
+{
+    public List<EventGenerationPrompt> Prompts { get; } = [];
+    public Func<EventGenerationPrompt, string> Response { get; set; } = _ => "{\"event\":null}";
+
+    public Task<string> GenerateAsync(EventGenerationPrompt prompt, CancellationToken cancellationToken)
+    {
+        Prompts.Add(prompt);
+        return Task.FromResult(Response(prompt));
     }
 }
 

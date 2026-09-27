@@ -60,6 +60,9 @@ public sealed class SwipeAnswerRecord
     /// <summary>Изменение Очков знаний после этого принятого ответа.</summary>
     public int KnowledgeDelta { get; set; }
 
+    /// <summary>Содержание Вопроса и Пояснение на момент ответа для неизменного Разбора (jsonb).</summary>
+    public string? QuestionSnapshot { get; set; }
+
     /// <summary>Фактические изменения Шкал после обрезки по границам: код Шкалы → изменение (jsonb).</summary>
     public string ScaleChanges { get; set; } = string.Empty;
 
@@ -92,6 +95,7 @@ internal static class SwipeShiftModel
             entity.Property(answer => answer.Answer).HasMaxLength(20).IsRequired();
             entity.Property(answer => answer.Verdict).HasMaxLength(20).IsRequired();
             entity.Property(answer => answer.ScaleChanges).HasColumnType("jsonb").IsRequired();
+            entity.Property(answer => answer.QuestionSnapshot).HasColumnType("jsonb");
         });
     }
 }

@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using TurboSquadApp.Data;
@@ -11,9 +12,11 @@ using TurboSquadApp.Data;
 namespace TurboSquadApp.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260927154126_AddEventDrafts")]
+    partial class AddEventDrafts
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -97,98 +100,6 @@ namespace TurboSquadApp.Data.Migrations
                     b.ToTable("user_roles", (string)null);
                 });
 
-            modelBuilder.Entity("TurboSquadApp.Data.BlitzAnswerRecord", b =>
-                {
-                    b.Property<Guid>("SessionId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("session_id");
-
-                    b.Property<int>("Seq")
-                        .HasColumnType("integer")
-                        .HasColumnName("seq");
-
-                    b.Property<DateTimeOffset>("AnsweredAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("answered_at");
-
-                    b.Property<int>("ElapsedMs")
-                        .HasColumnType("integer")
-                        .HasColumnName("elapsed_ms");
-
-                    b.Property<string>("QuestionId")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("question_id");
-
-                    b.Property<string>("SelectedOptionIds")
-                        .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("selected_option_ids");
-
-                    b.Property<bool>("TimedOut")
-                        .HasColumnType("boolean")
-                        .HasColumnName("timed_out");
-
-                    b.Property<string>("Verdict")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("verdict");
-
-                    b.HasKey("SessionId", "Seq")
-                        .HasName("pk_blitz_answers");
-
-                    b.HasIndex("SessionId", "QuestionId")
-                        .IsUnique()
-                        .HasDatabaseName("ix_blitz_answers_session_id_question_id");
-
-                    b.ToTable("blitz_answers", (string)null);
-                });
-
-            modelBuilder.Entity("TurboSquadApp.Data.BlitzSessionRecord", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<string>("Deck")
-                        .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("deck");
-
-                    b.Property<DateTimeOffset?>("FinishedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("finished_at");
-
-                    b.Property<DateTimeOffset?>("QuestionShownAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("question_shown_at");
-
-                    b.Property<DateTimeOffset>("StartedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("started_at");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("status");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("user_id");
-
-                    b.HasKey("Id")
-                        .HasName("pk_blitz_sessions");
-
-                    b.HasIndex("UserId")
-                        .HasDatabaseName("ix_blitz_sessions_user_id");
-
-                    b.ToTable("blitz_sessions", (string)null);
-                });
-
             modelBuilder.Entity("TurboSquadApp.Data.Brigade", b =>
                 {
                     b.Property<Guid>("Id")
@@ -251,22 +162,6 @@ namespace TurboSquadApp.Data.Migrations
                             DepotId = new Guid("10000000-0000-0000-0000-000000000002"),
                             Name = "Бригада 3"
                         });
-                });
-
-            modelBuilder.Entity("TurboSquadApp.Data.ConductorProfileRecord", b =>
-                {
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("user_id");
-
-                    b.Property<int>("RankIndex")
-                        .HasColumnType("integer")
-                        .HasColumnName("rank_index");
-
-                    b.HasKey("UserId")
-                        .HasName("pk_conductor_profiles");
-
-                    b.ToTable("conductor_profiles", (string)null);
                 });
 
             modelBuilder.Entity("TurboSquadApp.Data.Depot", b =>
@@ -355,48 +250,6 @@ namespace TurboSquadApp.Data.Migrations
                     b.ToTable("event_drafts", (string)null);
                 });
 
-            modelBuilder.Entity("TurboSquadApp.Data.KnowledgeMasteryRecord", b =>
-                {
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("user_id");
-
-                    b.Property<string>("UnitType")
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("unit_type");
-
-                    b.Property<string>("UnitId")
-                        .HasMaxLength(512)
-                        .HasColumnType("character varying(512)")
-                        .HasColumnName("unit_id");
-
-                    b.Property<string>("Competence")
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
-                        .HasColumnName("competence");
-
-                    b.Property<int>("AwardedCost")
-                        .HasColumnType("integer")
-                        .HasColumnName("awarded_cost");
-
-                    b.Property<bool>("IsMastered")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_mastered");
-
-                    b.Property<DateTimeOffset>("LastAttemptAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("last_attempt_at");
-
-                    b.HasKey("UserId", "UnitType", "UnitId", "Competence")
-                        .HasName("pk_knowledge_masteries");
-
-                    b.HasIndex("UserId")
-                        .HasDatabaseName("ix_knowledge_masteries_user_id");
-
-                    b.ToTable("knowledge_masteries", (string)null);
-                });
-
             modelBuilder.Entity("TurboSquadApp.Data.QuestionRecord", b =>
                 {
                     b.Property<string>("Id")
@@ -422,12 +275,6 @@ namespace TurboSquadApp.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("explanation_text");
-
-                    b.Property<int>("KnowledgeCost")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(10)
-                        .HasColumnName("knowledge_cost");
 
                     b.Property<string>("Options")
                         .IsRequired()
@@ -620,19 +467,11 @@ namespace TurboSquadApp.Data.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("is_repeat");
 
-                    b.Property<int>("KnowledgeDelta")
-                        .HasColumnType("integer")
-                        .HasColumnName("knowledge_delta");
-
                     b.Property<string>("QuestionId")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)")
                         .HasColumnName("question_id");
-
-                    b.Property<string>("QuestionSnapshot")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("question_snapshot");
 
                     b.Property<string>("ScaleChanges")
                         .IsRequired()
@@ -764,10 +603,6 @@ namespace TurboSquadApp.Data.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
                         .HasColumnName("kind");
-
-                    b.Property<int>("KnowledgeDelta")
-                        .HasColumnType("integer")
-                        .HasColumnName("knowledge_delta");
 
                     b.Property<string>("OptionId")
                         .HasMaxLength(100)
@@ -1019,26 +854,6 @@ namespace TurboSquadApp.Data.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("TurboSquadApp.Data.BlitzAnswerRecord", b =>
-                {
-                    b.HasOne("TurboSquadApp.Data.BlitzSessionRecord", null)
-                        .WithMany()
-                        .HasForeignKey("SessionId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_blitz_answers_blitz_sessions_session_id");
-                });
-
-            modelBuilder.Entity("TurboSquadApp.Data.BlitzSessionRecord", b =>
-                {
-                    b.HasOne("TurboSquadApp.Data.AppUser", null)
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_blitz_sessions_users_user_id");
-                });
-
             modelBuilder.Entity("TurboSquadApp.Data.Brigade", b =>
                 {
                     b.HasOne("TurboSquadApp.Data.Depot", "Depot")
@@ -1051,16 +866,6 @@ namespace TurboSquadApp.Data.Migrations
                     b.Navigation("Depot");
                 });
 
-            modelBuilder.Entity("TurboSquadApp.Data.ConductorProfileRecord", b =>
-                {
-                    b.HasOne("TurboSquadApp.Data.AppUser", null)
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_conductor_profiles_users_user_id");
-                });
-
             modelBuilder.Entity("TurboSquadApp.Data.EventDraftRecord", b =>
                 {
                     b.HasOne("TurboSquadApp.Data.SourceRecord", null)
@@ -1068,16 +873,6 @@ namespace TurboSquadApp.Data.Migrations
                         .HasForeignKey("SourceId")
                         .OnDelete(DeleteBehavior.SetNull)
                         .HasConstraintName("fk_event_drafts_sources_source_id");
-                });
-
-            modelBuilder.Entity("TurboSquadApp.Data.KnowledgeMasteryRecord", b =>
-                {
-                    b.HasOne("TurboSquadApp.Data.AppUser", null)
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_knowledge_masteries_users_user_id");
                 });
 
             modelBuilder.Entity("TurboSquadApp.Data.QuestionRecord", b =>

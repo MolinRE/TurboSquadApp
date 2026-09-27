@@ -9,6 +9,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<Brigade> Brigades => Set<Brigade>();
     public DbSet<AppUserRole> UserRoles => Set<AppUserRole>();
     public DbSet<EventDocumentRecord> EventDocuments => Set<EventDocumentRecord>();
+    public DbSet<EventDraftRecord> EventDrafts => Set<EventDraftRecord>();
     public DbSet<ScaleRecord> Scales => Set<ScaleRecord>();
     public DbSet<ServiceClassRecord> ServiceClasses => Set<ServiceClassRecord>();
     public DbSet<TripSettingsRecord> TripSettings => Set<TripSettingsRecord>();

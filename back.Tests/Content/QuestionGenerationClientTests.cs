@@ -22,7 +22,7 @@ public class QuestionGenerationClientTests
         var client = new PolzaQuestionGenerationClient(http,
             new VoiceOptions { PolzaApiKey = "polza-test", LlmMaxTokens = 256 });
         var prompt = new QuestionGenerationPrompt("СТО", "1.", "Проверить билет.", ["Посадка и документы"], null,
-            MaxTokens: 12_000);
+            MaxTokens: 12_000, Model: "openai/gpt-oss-20b");
 
         var response = await client.GenerateAsync(prompt, CancellationToken.None);
 
@@ -30,6 +30,7 @@ public class QuestionGenerationClientTests
         Assert.Empty(response.Content);
         var payload = JsonDocument.Parse(requestBody!).RootElement;
         Assert.Equal(12_000, payload.GetProperty("max_tokens").GetInt32());
+        Assert.Equal("openai/gpt-oss-20b", payload.GetProperty("model").GetString());
         Assert.Equal("json_schema", payload.GetProperty("response_format").GetProperty("type").GetString());
     }
 
