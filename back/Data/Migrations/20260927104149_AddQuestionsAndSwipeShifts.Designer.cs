@@ -12,7 +12,7 @@ using TurboSquadApp.Data;
 namespace TurboSquadApp.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260927101002_AddQuestionsAndSwipeShifts")]
+    [Migration("20260927104149_AddQuestionsAndSwipeShifts")]
     partial class AddQuestionsAndSwipeShifts
     {
         /// <inheritdoc />
@@ -605,6 +605,14 @@ namespace TurboSquadApp.Data.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("voice_latency_ms");
 
+                    b.Property<int?>("VoiceLayaLatencyMs")
+                        .HasColumnType("integer")
+                        .HasColumnName("voice_laya_latency_ms");
+
+                    b.Property<int?>("VoiceLlmLatencyMs")
+                        .HasColumnType("integer")
+                        .HasColumnName("voice_llm_latency_ms");
+
                     b.Property<string>("VoicePassengerReply")
                         .HasColumnType("text")
                         .HasColumnName("voice_passenger_reply");
@@ -622,6 +630,30 @@ namespace TurboSquadApp.Data.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)")
                         .HasColumnName("voice_request_id");
+
+                    b.Property<string>("VoiceRoleStages")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("voice_role_stages");
+
+                    b.Property<double?>("VoiceSafetyConfidence")
+                        .HasColumnType("double precision")
+                        .HasColumnName("voice_safety_confidence");
+
+                    b.Property<double?>("VoiceSafetyViolation")
+                        .HasColumnType("double precision")
+                        .HasColumnName("voice_safety_violation");
+
+                    b.Property<double?>("VoiceScore")
+                        .HasColumnType("double precision")
+                        .HasColumnName("voice_score");
+
+                    b.Property<double?>("VoiceScoreConfidence")
+                        .HasColumnType("double precision")
+                        .HasColumnName("voice_score_confidence");
+
+                    b.Property<int?>("VoiceSttLatencyMs")
+                        .HasColumnType("integer")
+                        .HasColumnName("voice_stt_latency_ms");
 
                     b.Property<string>("VoiceTranscript")
                         .HasColumnType("text")
