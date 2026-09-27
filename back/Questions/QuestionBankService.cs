@@ -20,20 +20,21 @@ public sealed class QuestionEditorInput
     public IReadOnlyList<string> ServiceClasses { get; set; } = [];
     public double BaseFrequency { get; set; } = 1;
     public int? TimeLimitSec { get; set; }
+    public int KnowledgeCost { get; set; } = 10;
 }
 
 public sealed record QuestionView(
     string Id, string Type, string Status, string Statement, JsonElement Options,
     string ExplanationText, string ExplanationKeyFact, string? Quote, string Source, string Topic,
     IReadOnlyList<string> Categories, IReadOnlyList<string> ServiceClasses,
-    double BaseFrequency, int? TimeLimitSec)
+    double BaseFrequency, int? TimeLimitSec, int KnowledgeCost)
 {
     public static QuestionView Of(QuestionRecord record) => new(
         record.Id, record.Type, record.Status, record.Statement, JsonSerializer.Deserialize<JsonElement>(record.Options),
         record.ExplanationText, record.ExplanationKeyFact, record.Quote, record.Source, record.Topic,
         JsonSerializer.Deserialize<List<string>>(record.Categories) ?? [],
         JsonSerializer.Deserialize<List<string>>(record.ServiceClasses) ?? [],
-        record.BaseFrequency, record.TimeLimitSec);
+        record.BaseFrequency, record.TimeLimitSec, record.KnowledgeCost);
 }
 
 public sealed record QuestionCatalog(
@@ -88,6 +89,7 @@ public sealed class QuestionBankService(AppDbContext db)
     public async Task<IResult> CreateAsync(QuestionEditorInput input, CancellationToken cancellationToken)
     {
         if (!KnownType(input.Type)) return InvalidType();
+        if (InvalidKnowledgeCost(input.KnowledgeCost) is { } invalidCost) return invalidCost;
         var record = new QuestionRecord { Id = $"q-{Guid.NewGuid():N}", Status = QuestionStatuses.Draft };
         Apply(record, input);
         db.Questions.Add(record);
@@ -100,6 +102,7 @@ public sealed class QuestionBankService(AppDbContext db)
         var record = await db.Questions.SingleOrDefaultAsync(q => q.Id == id, cancellationToken);
         if (record is null) return Results.NotFound();
         if (!KnownType(input.Type)) return InvalidType();
+        if (InvalidKnowledgeCost(input.KnowledgeCost) is { } invalidCost) return invalidCost;
         if (record.Type != input.Type && await UsedInSwipeHistoryAsync(id, cancellationToken))
             return Results.Conflict(new { message = "Нельзя изменить тип Вопроса, который есть в Смене" });
 
@@ -182,6 +185,7 @@ public sealed class QuestionBankService(AppDbContext db)
         record.ServiceClasses = JsonSerializer.Serialize(input.ServiceClasses ?? []);
         record.BaseFrequency = input.BaseFrequency;
         record.TimeLimitSec = input.TimeLimitSec;
+        record.KnowledgeCost = input.KnowledgeCost;
     }
 
     private static bool KnownType(string type) => type is
@@ -189,4 +193,7 @@ public sealed class QuestionBankService(AppDbContext db)
 
     private static IResult InvalidType() => Results.BadRequest(new QuestionValidationReport(
         [new("type", "Неизвестный тип Вопроса")]));
+
+    private static IResult? InvalidKnowledgeCost(int cost) => cost > 0 ? null : Results.BadRequest(
+        new QuestionValidationReport([new("knowledgeCost", "Стоимость по Знанию должна быть положительной")]));
 }

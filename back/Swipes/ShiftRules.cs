@@ -46,7 +46,7 @@ public sealed record ServiceClassRef(string Code, string Name);
 /// <summary>Вопрос-свайп в колоде Смены: всё, что нужно правилам и карточке.</summary>
 public sealed record ShiftQuestion(
     string Id, string Statement, SwipeOptions Options, Explanation Explanation, string Topic,
-    IReadOnlyList<ServiceClassRef> ServiceClasses);
+    IReadOnlyList<ServiceClassRef> ServiceClasses, int KnowledgeCost = 10);
 
 /// <summary>Карточка в очереди Смены; Repeats — сколько раз Вопрос уже вернулся Повтором, 0 — первый показ.</summary>
 public sealed record QueuedCard(ShiftQuestion Question, int Repeats)

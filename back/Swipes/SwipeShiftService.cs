@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using TurboSquadApp.Data;
 using TurboSquadApp.Events;
 using TurboSquadApp.Questions;
+using TurboSquadApp.Scoring;
 
 namespace TurboSquadApp.Swipes;
 
@@ -11,7 +12,8 @@ namespace TurboSquadApp.Swipes;
 /// Вердикт и Шкалы считают правила (ShiftPlay), клиент только показывает. Состояние Смены отдельно не хранится:
 /// правила заново проигрывают записанные ответы на колоде и снимке Шкал со старта.
 /// </summary>
-public sealed class SwipeShiftService(AppDbContext dbContext, TimeProvider clock, Random random)
+public sealed class SwipeShiftService(AppDbContext dbContext, TimeProvider clock, Random random,
+    KnowledgeScoringService scoring)
 {
     /// <summary>JSON колонок jsonb Смены и ответов: колода, снимок Шкал, изменения Шкал.</summary>
     private static readonly JsonSerializerOptions ColumnJson = JsonSerializerOptions.Web;
@@ -130,11 +132,14 @@ public sealed class SwipeShiftService(AppDbContext dbContext, TimeProvider clock
         CancellationToken cancellationToken)
     {
         var settled = play.Settle(answer, timedOut, elapsedMs);
+        var knowledgeDelta = await scoring.ApplyAsync(record.UserId, KnowledgeUnit.Question(settled.Question.Id),
+            settled.Verdict == Verdict.Correct, settled.Question.KnowledgeCost, now, cancellationToken);
         dbContext.SwipeAnswers.Add(new SwipeAnswerRecord
         {
             ShiftId = record.Id, Seq = play.Answers.Count, QuestionId = settled.Question.Id,
             Answer = timedOut ? TimedOutAnswer : Code(answer), Verdict = Code(settled.Verdict), IsRepeat = settled.IsRepeat,
             ElapsedMs = elapsedMs, ScaleChanges = JsonSerializer.Serialize(settled.ScaleChanges, ColumnJson), AnsweredAt = now,
+            KnowledgeDelta = knowledgeDelta,
         });
         record.CardShownAt = null;
         record.Status = Code(play.Status);
@@ -231,7 +236,7 @@ public sealed class SwipeShiftService(AppDbContext dbContext, TimeProvider clock
         new Explanation(record.ExplanationText, record.ExplanationKeyFact, record.Source), record.Topic,
         JsonSerializer.Deserialize<List<string>>(record.ServiceClasses)!
             .Select(code => new ServiceClassRef(code, classNames.GetValueOrDefault(code, code)))
-            .ToList());
+            .ToList(), record.KnowledgeCost);
 
     /// <summary>Значение перечисления так же, как в JSON API: calm, running, correct.</summary>
     private static string Code(Enum value) => JsonNamingPolicy.CamelCase.ConvertName(value.ToString());

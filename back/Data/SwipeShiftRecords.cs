@@ -57,6 +57,9 @@ public sealed class SwipeAnswerRecord
 
     public int ElapsedMs { get; set; }
 
+    /// <summary>Изменение Очков знаний после этого принятого ответа.</summary>
+    public int KnowledgeDelta { get; set; }
+
     /// <summary>Фактические изменения Шкал после обрезки по границам: код Шкалы → изменение (jsonb).</summary>
     public string ScaleChanges { get; set; } = string.Empty;
 

@@ -1,6 +1,6 @@
 {
   "id": "sit-33",
-  "version": 2,
+  "version": 3,
   "title": "Два пассажира на одно место",
   "topic": "Посадка и документы",
   "categories": [
@@ -19,6 +19,7 @@
         {
           "id": "a",
           "text": "«Я вижу, что ситуация требует уточнения. Позвольте Ваши билеты»",
+          "competencies": { "knowledge": 10 },
           "scaleDeltas": {
             "loyalty": 5,
             "safety": 5
@@ -72,6 +73,7 @@
         {
           "id": "a",
           "text": "«Информирую Вас о том, что оба билета оформлены на это место. Сейчас я приглашу начальника поезда для уточнения»",
+          "competencies": { "knowledge": 10 },
           "scaleDeltas": {
             "loyalty": 5,
             "safety": 5
@@ -122,6 +124,7 @@
         {
           "id": "a",
           "text": "Доложить о нетрезвом пассажире сейчас",
+          "competencies": { "knowledge": 10 },
           "scaleDeltas": {
             "safety": -10
           },
@@ -157,6 +160,7 @@
         {
           "id": "a",
           "text": "Предложить второму пассажиру свободное место в этом вагоне",
+          "competencies": { "knowledge": 10 },
           "scaleDeltas": {
             "loyalty": 5
           },
@@ -174,6 +178,7 @@
         {
           "id": "b",
           "text": "Предложить второму пассажиру место классом выше без доплаты",
+          "competencies": { "knowledge": 10 },
           "conditions": [
             {
               "type": "class",
@@ -208,6 +213,7 @@
         {
           "id": "a",
           "text": "«Благодарю Вас за понимание и ожидание»",
+          "competencies": { "knowledge": 10 },
           "scaleDeltas": {
             "loyalty": 10
           },

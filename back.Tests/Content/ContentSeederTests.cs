@@ -21,7 +21,7 @@ public class ContentSeederTests
     }
 
     [Fact]
-    public async Task Empty_database_gets_directories_events_version_1_and_trip_settings()
+    public async Task Empty_database_gets_directories_scored_events_and_trip_settings()
     {
         await Seed();
 
@@ -31,7 +31,7 @@ public class ContentSeederTests
             ["standard", "comfort", "business", "first"],
             await db.ServiceClasses.OrderBy(c => c.SortOrder).Select(c => c.Code).ToListAsync());
         Assert.Equal(
-            [("sit-06", 2), ("sit-33", 2), ("zastup", 1)],
+            [("sit-06", 3), ("sit-33", 3), ("zastup", 1)],
             (await db.EventDocuments.ToListAsync()).Select(e => (e.EventId, e.Version)).Order());
         var trip = Assert.Single(await db.TripSettings.ToListAsync());
         Assert.Equal("zastup", JsonSerializer.Deserialize<TripSettings>(trip.Document, EventJson.Options)!.ShiftStartEvent);

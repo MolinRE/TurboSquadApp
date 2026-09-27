@@ -83,6 +83,7 @@ public sealed class ContentSeeder(AppDbContext dbContext)
             Quote = seed.Explanation.Quote, Source = seed.Explanation.Source, Topic = seed.Topic,
             Categories = JsonSerializer.Serialize(seed.Categories), ServiceClasses = JsonSerializer.Serialize(seed.ServiceClasses),
             BaseFrequency = seed.BaseFrequency, TimeLimitSec = seed.TimeLimitSec,
+            KnowledgeCost = seed.KnowledgeCost,
         };
         var report = QuestionValidator.ValidateForPublication(question, directory);
         if (!report.IsValid)
