@@ -43,7 +43,7 @@ public class VoiceClientTests
         {
             captured = request;
             capturedBody = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
-            return Json(HttpStatusCode.OK, "{\"answers\":{\"choice\":{\"choice\":\"a\",\"answer_confidence\":0.91}}}");
+            return Json(HttpStatusCode.OK, "{\"answers\":{\"choice\":{\"choice\":\"a\",\"answer_confidence\":0.91},\"score\":{\"score\":8.5,\"answer_confidence\":0.82},\"acknowledge\":{\"noul\":0.91},\"rule\":{\"noul\":0.72},\"solution\":{\"noul\":0.63},\"reassure\":{\"noul\":0.41},\"safety\":{\"noul\":0.08,\"answer_confidence\":0.92}}}");
         });
         using var http = new HttpClient(handler);
         var client = new LayaClient(http, new VoiceOptions { LayaToken = "laya-test", LayaEndpoint = "http://laya.test/v1/systemone" });
@@ -55,12 +55,18 @@ public class VoiceClientTests
 
         Assert.Equal(("a", 0.91, null), (result.Choice, result.Confidence, result.RequestId));
         Assert.Null(result.ErrorCode);
+        Assert.Equal(0.85, result.Assessment!.Score!.Value, 3);
+        Assert.Equal(0.82, result.Assessment.ScoreConfidence!.Value, 3);
+        Assert.Equal(0.91, result.Assessment.RoleStages["acknowledge"], 3);
+        Assert.Equal(0.08, result.Assessment.SafetyViolation!.Value, 3);
         Assert.Equal("Bearer", captured!.Headers.Authorization!.Scheme);
         var json = JsonDocument.Parse(capturedBody!).RootElement;
         Assert.Equal("multilingual", json.GetProperty("model").GetString());
         Assert.Equal("Прошу соблюдать спокойствие", json.GetProperty("state").GetProperty("conductor_response").GetString());
-        Assert.Equal("choice", json.GetProperty("questions").EnumerateObject().Single().Name);
         Assert.Equal("Спокойно подойти", json.GetProperty("questions").GetProperty("choice").GetProperty("criteria").GetProperty("a").GetString());
+        Assert.Equal("score", json.GetProperty("questions").GetProperty("score").GetProperty("type").GetString());
+        Assert.Equal("noul", json.GetProperty("questions").GetProperty("safety").GetProperty("type").GetString());
+        Assert.Equal("noul", json.GetProperty("questions").GetProperty("acknowledge").GetProperty("type").GetString());
     }
 
     [Fact]

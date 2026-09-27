@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using TurboSquadApp.Content;
@@ -127,7 +128,8 @@ public sealed class TripService(
 
         var attempt = new VoiceAttempt(
             currentEvent.Id, currentEvent.Version, currentStep.Id, pipeline.Transcript, pipeline.Choice,
-            pipeline.Confidence, pipeline.LatencyMs, false, pipeline.ErrorCode, pipeline.ProviderRequestId, attemptId);
+            pipeline.Confidence, pipeline.LatencyMs, false, pipeline.ErrorCode, pipeline.ProviderRequestId, attemptId,
+            Assessment: pipeline.Assessment, SttLatencyMs: pipeline.SttLatencyMs, LayaLatencyMs: pipeline.LayaLatencyMs);
         var attemptResult = TripEngine.Reduce(state, new RecordVoiceAttempt(attempt));
         if (attemptResult.Rejection is { } rejection)
             return Rejected(rejection.Reason.ToString(), rejection.Message);
@@ -231,6 +233,7 @@ public sealed class TripService(
         var reply = new System.Text.StringBuilder();
         string? requestId = null;
         var committed = false;
+        var llmTimer = Stopwatch.StartNew();
         try
         {
             await WriteSseAsync(response, "started", new { attemptId }, cancellationToken);
@@ -244,7 +247,7 @@ public sealed class TripService(
             var deadline = ExpiresAt(record, state);
             if (deadline is { } expires && clock.GetUtcNow() > expires + TimerTolerance)
             {
-                await SaveReplyAsync(record.Id, attemptId, null, "VoiceDeadlineExceeded");
+                await SaveReplyAsync(record.Id, attemptId, null, "VoiceDeadlineExceeded", (int)llmTimer.ElapsedMilliseconds);
                 await WriteSseAsync(response, "error", new { reason = "VoiceDeadlineExceeded", message = "Время голосового Шага истекло до завершения реплики" }, CancellationToken.None);
                 return;
             }
@@ -254,24 +257,25 @@ public sealed class TripService(
                 CancellationToken.None);
             row.VoiceApplied = true;
             row.VoicePassengerReply = reply.ToString();
+            row.VoiceLlmLatencyMs = (int)llmTimer.ElapsedMilliseconds;
             AppendToJournal(record, state, preview.State, clock.GetUtcNow());
             await dbContext.SaveChangesAsync(CancellationToken.None);
             committed = true;
-            var appliedAttempt = attempt with { Applied = true, PassengerReply = reply.ToString() };
+            var appliedAttempt = attempt with { Applied = true, PassengerReply = reply.ToString(), LlmLatencyMs = row.VoiceLlmLatencyMs };
             await WriteSseAsync(response, "done", new { reply = reply.ToString(), requestId, trip = View(record, preview.State, VoiceView(appliedAttempt)) }, cancellationToken);
         }
         catch (LlmProviderException ex)
         {
-            await SaveReplyAsync(record.Id, attemptId, null, ex.Code);
+            await SaveReplyAsync(record.Id, attemptId, null, ex.Code, (int)llmTimer.ElapsedMilliseconds);
             await WriteSseAsync(response, "error", new { reason = ex.Code, message = ex.Message, trip = View(record, state, VoiceView(attempt with { ReplyError = ex.Code })) }, CancellationToken.None);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            if (!committed) await SaveReplyAsync(record.Id, attemptId, null, "LlmClientDisconnected");
+            if (!committed) await SaveReplyAsync(record.Id, attemptId, null, "LlmClientDisconnected", (int)llmTimer.ElapsedMilliseconds);
         }
         catch (IOException)
         {
-            if (!committed) await SaveReplyAsync(record.Id, attemptId, null, "LlmClientDisconnected");
+            if (!committed) await SaveReplyAsync(record.Id, attemptId, null, "LlmClientDisconnected", (int)llmTimer.ElapsedMilliseconds);
         }
     }
 
@@ -289,7 +293,10 @@ public sealed class TripService(
     private static VoiceAttemptView VoiceView(VoiceAttempt attempt, bool pending = false) => new(
         attempt.Transcript, attempt.Choice, attempt.Confidence, attempt.LatencyMs,
         attempt.Applied, attempt.ErrorCode, attempt.ProviderRequestId, attempt.AttemptId,
-        attempt.PassengerReply, attempt.ReplyError, pending);
+        attempt.PassengerReply, attempt.ReplyError, pending,
+        attempt.Assessment?.Score, attempt.Assessment?.ScoreConfidence, attempt.Assessment?.RoleStages,
+        attempt.Assessment?.SafetyViolation, attempt.Assessment?.SafetyConfidence,
+        attempt.SttLatencyMs, attempt.LayaLatencyMs, attempt.LlmLatencyMs);
 
     private static bool IsPending(VoiceAttempt attempt) =>
         !attempt.Applied && attempt.Choice is not null && attempt.ErrorCode is null && attempt.ReplyError is null;
@@ -303,7 +310,7 @@ public sealed class TripService(
             : View(record, state, VoiceView(attempt));
     }
 
-    private async Task SaveReplyAsync(Guid tripId, string attemptId, string? reply, string? error)
+    private async Task SaveReplyAsync(Guid tripId, string attemptId, string? reply, string? error, int? llmLatencyMs = null)
     {
         var row = await dbContext.TripJournal.SingleOrDefaultAsync(
             item => item.TripId == tripId && item.Kind == TripJournalKinds.VoiceAttempt && item.VoiceAttemptId == attemptId,
@@ -311,6 +318,7 @@ public sealed class TripService(
         if (row is null) return;
         row.VoicePassengerReply = reply;
         row.VoiceReplyError = error;
+        row.VoiceLlmLatencyMs = llmLatencyMs;
         await dbContext.SaveChangesAsync(CancellationToken.None);
     }
 
@@ -395,7 +403,8 @@ public sealed class TripService(
                 state = Expect(TripEngine.Reduce(state, new RecordVoiceAttempt(new VoiceAttempt(
                     row.EventId!, row.EventVersion!.Value, row.StepId!, row.VoiceTranscript, row.VoiceChoice,
                     row.VoiceConfidence, row.VoiceLatencyMs ?? 0, row.VoiceApplied, row.VoiceError, row.VoiceRequestId,
-                    row.VoiceAttemptId ?? $"legacy:{row.Seq}", row.VoicePassengerReply, row.VoiceReplyError))));
+                    row.VoiceAttemptId ?? $"legacy:{row.Seq}", row.VoicePassengerReply, row.VoiceReplyError,
+                    AssessmentOf(row), row.VoiceSttLatencyMs, row.VoiceLayaLatencyMs, row.VoiceLlmLatencyMs))));
                 continue;
             }
             TripAction? action = row.Kind switch
@@ -411,6 +420,18 @@ public sealed class TripService(
         static TripState Expect(TripResult result) => result.Rejection is null
             ? result.State
             : throw new InvalidOperationException($"Журнал Рейса не проигрывается: {result.Rejection.Message}");
+
+        static LayaAssessment? AssessmentOf(TripJournalRecord row) =>
+            row.VoiceScore is null && row.VoiceSafetyViolation is null && row.VoiceRoleStages is null
+                ? null
+                : new(
+                    row.VoiceScore,
+                    row.VoiceScoreConfidence,
+                    string.IsNullOrWhiteSpace(row.VoiceRoleStages)
+                        ? new Dictionary<string, double>()
+                        : JsonSerializer.Deserialize<Dictionary<string, double>>(row.VoiceRoleStages, SnapshotJson) ?? new Dictionary<string, double>(),
+                    row.VoiceSafetyViolation,
+                    row.VoiceSafetyConfidence);
     }
 
     /// <summary>
@@ -457,6 +478,12 @@ public sealed class TripService(
             VoiceApplied = attempt.Applied, VoiceError = attempt.ErrorCode,
             VoiceRequestId = attempt.ProviderRequestId, VoiceAttemptId = attempt.AttemptId,
             VoicePassengerReply = attempt.PassengerReply, VoiceReplyError = attempt.ReplyError,
+            VoiceScore = attempt.Assessment?.Score, VoiceScoreConfidence = attempt.Assessment?.ScoreConfidence,
+            VoiceRoleStages = attempt.Assessment is null ? null : JsonSerializer.Serialize(attempt.Assessment.RoleStages, SnapshotJson),
+            VoiceSafetyViolation = attempt.Assessment?.SafetyViolation,
+            VoiceSafetyConfidence = attempt.Assessment?.SafetyConfidence,
+            VoiceSttLatencyMs = attempt.SttLatencyMs, VoiceLayaLatencyMs = attempt.LayaLatencyMs,
+            VoiceLlmLatencyMs = attempt.LlmLatencyMs,
             ElapsedMs = elapsedMs,
         },
         EventFinished finished => new()

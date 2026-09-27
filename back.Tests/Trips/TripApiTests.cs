@@ -40,7 +40,20 @@ public class TripApiTests(TripApiFactory factory) : IClassFixture<TripApiFactory
         var voiceAttempts = await factory.Database(db => db.TripJournal.Where(r => r.TripId == trip.Id && r.Kind == "voiceAttempt").ToListAsync());
         Assert.Equal(("Голосовой ответ a", true, "a"),
             (Assert.Single(voiceAttempts).VoiceTranscript, Assert.Single(voiceAttempts).VoiceApplied, Assert.Single(voiceAttempts).VoiceChoice));
-        Assert.Single(debrief["voiceAttempts"]!.AsArray());
+        var voiceAttempt = Assert.Single(debrief["voiceAttempts"]!.AsArray())!;
+        Assert.Equal(0.8, voiceAttempt["score"]!.GetValue<double>(), 3);
+        Assert.Equal(0.8, voiceAttempt["roleStages"]!.AsObject()["acknowledge"]!.GetValue<double>(), 3);
+        Assert.Equal(0.05, voiceAttempt["safetyViolation"]!.GetValue<double>(), 3);
+        Assert.Equal(5, voiceAttempt["sttLatencyMs"]!.GetValue<int>());
+        Assert.Equal(7, voiceAttempt["layaLatencyMs"]!.GetValue<int>());
+        Assert.NotNull(voiceAttempt["llmLatencyMs"]);
+
+        using var manager = await factory.CreateManagerClient();
+        var analytics = (await manager.GetFromJsonAsync<JsonNode>("/api/analytics/voice"))!;
+        Assert.True((int)analytics["attempts"]! >= 1);
+        Assert.Equal(0, (int)analytics["fallbackAttempts"]!);
+        Assert.Contains(analytics["steps"]!.AsArray(), step =>
+            (string)step!["eventId"]! == "sit-06" && (string)step["stepId"]! == "s1");
     }
 
     [Fact]

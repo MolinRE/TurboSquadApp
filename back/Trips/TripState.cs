@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using TurboSquadApp.Events;
+using TurboSquadApp.Voice;
 
 namespace TurboSquadApp.Trips;
 
@@ -107,7 +108,9 @@ public sealed record Decision(
 public sealed record VoiceAttempt(
     string EventId, int EventVersion, string StepId, string? Transcript, string? Choice,
     double? Confidence, int LatencyMs, bool Applied, string? ErrorCode, string? ProviderRequestId,
-    string AttemptId = "", string? PassengerReply = null, string? ReplyError = null) : JournalEntry;
+    string AttemptId = "", string? PassengerReply = null, string? ReplyError = null,
+    LayaAssessment? Assessment = null, int? SttLatencyMs = null, int? LayaLatencyMs = null,
+    int? LlmLatencyMs = null) : JournalEntry;
 
 /// <summary>Изменение Шкалы: из контента (Nominal) и фактическое после обрезки по диапазону (Applied).</summary>
 public sealed record ScaleChange(string Scale, int Nominal, int Applied, int Before, int After);

@@ -10,6 +10,14 @@ export type VoiceAttempt = {
   passengerReply: string | null;
   replyError: string | null;
   pending?: boolean;
+  score: number | null;
+  scoreConfidence: number | null;
+  roleStages: Record<string, number> | null;
+  safetyViolation: number | null;
+  safetyConfidence: number | null;
+  sttLatencyMs: number | null;
+  layaLatencyMs: number | null;
+  llmLatencyMs: number | null;
 };
 
 export type TripView = {
@@ -48,6 +56,33 @@ export type TokenResponse = {
   accessToken: string;
   tokenType: string;
   expiresAt: string;
+};
+
+export type VoiceLatency = { count: number; averageMs: number; p50Ms: number; p95Ms: number };
+
+export type VoiceAnalytics = {
+  attempts: number;
+  appliedAttempts: number;
+  failedAttempts: number;
+  uncertainAttempts: number;
+  uncertainRate: number;
+  fallbackAttempts: number;
+  fallbackRate: number;
+  stt: VoiceLatency;
+  laya: VoiceLatency;
+  llm: VoiceLatency;
+  steps: Array<{
+    eventId: string;
+    eventVersion: number;
+    stepId: string;
+    attempts: number;
+    appliedAttempts: number;
+    uncertainAttempts: number;
+    averageScore: number | null;
+    stt: VoiceLatency;
+    laya: VoiceLatency;
+    llm: VoiceLatency;
+  }>;
 };
 
 export class ApiError extends Error {
@@ -109,6 +144,10 @@ export function startTrip(serviceClass: string) {
     method: "POST",
     body: JSON.stringify({ serviceClass }),
   });
+}
+
+export function getVoiceAnalytics() {
+  return json<VoiceAnalytics>("/api/analytics/voice");
 }
 
 export function chooseVariant(tripId: string, eventId: string, stepId: string, variantId: string) {

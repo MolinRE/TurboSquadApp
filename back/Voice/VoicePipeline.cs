@@ -79,9 +79,21 @@ public sealed record VoicePipelineRequest(
     string EventId, int EventVersion, string StepId, string Situation, string? Brief,
     IReadOnlyList<VoiceQuestion> Questions);
 
+public sealed record LayaAssessment(
+    double? Score,
+    double? ScoreConfidence,
+    IReadOnlyDictionary<string, double> RoleStages,
+    double? SafetyViolation,
+    double? SafetyConfidence)
+{
+    public static readonly IReadOnlyList<string> RoleStageCodes =
+        ["acknowledge", "rule", "solution", "reassure"];
+}
+
 public sealed record VoicePipelineResult(
     string? Transcript, string? Choice, double? Confidence, int LatencyMs,
-    bool Applied, string? ErrorCode, string? ErrorMessage, string? ProviderRequestId)
+    bool Applied, string? ErrorCode, string? ErrorMessage, string? ProviderRequestId,
+    LayaAssessment? Assessment = null, int? SttLatencyMs = null, int? LayaLatencyMs = null)
 {
     public static VoicePipelineResult Failure(string code, string message, int latencyMs = 0, string? transcript = null) =>
         new(transcript, null, null, latencyMs, false, code, message, null);
@@ -94,7 +106,8 @@ public interface IVoicePipeline
         CancellationToken cancellationToken);
 }
 
-public sealed record SttResult(string? Text, string? ErrorCode, string? ErrorMessage, string? RequestId);
+public sealed record SttResult(
+    string? Text, string? ErrorCode, string? ErrorMessage, string? RequestId, int LatencyMs = 0);
 
 public interface ISttClient
 {
@@ -102,7 +115,8 @@ public interface ISttClient
 }
 
 public sealed record LayaResult(
-    string? Choice, double? Confidence, string? ErrorCode, string? ErrorMessage, string? RequestId);
+    string? Choice, double? Confidence, string? ErrorCode, string? ErrorMessage, string? RequestId,
+    LayaAssessment? Assessment = null, int LatencyMs = 0);
 
 public interface ILayaClient
 {
@@ -142,7 +156,7 @@ public sealed class VoicePipelineService(
             return VoicePipelineResult.Failure(
                 stt.ErrorCode ?? "SttInvalidResponse",
                 stt.ErrorMessage ?? "Распознавание не вернуло текст",
-                (int)timer.ElapsedMilliseconds);
+                (int)timer.ElapsedMilliseconds) with { SttLatencyMs = stt.LatencyMs };
 
         var laya = await layaClient.DecideAsync(request.Situation, request.Brief, stt.Text, request.Questions, cancellationToken);
         if (laya.ErrorCode is not null || string.IsNullOrWhiteSpace(laya.Choice))
@@ -150,25 +164,33 @@ public sealed class VoicePipelineService(
                 laya.ErrorCode ?? "LayaInvalidResponse",
                 laya.ErrorMessage ?? "Laya не вернула Вариант",
                 (int)timer.ElapsedMilliseconds,
-                stt.Text);
+                stt.Text) with { SttLatencyMs = stt.LatencyMs, LayaLatencyMs = laya.LatencyMs, Assessment = laya.Assessment };
 
         if (laya.Confidence is null || laya.Confidence < options.MinimumConfidence)
             return VoicePipelineResult.Failure(
                 "LowConfidence",
                 $"Уверенность Laya ниже порога {options.MinimumConfidence:0.##}",
                 (int)timer.ElapsedMilliseconds,
-                stt.Text) with { Choice = laya.Choice, Confidence = laya.Confidence, ProviderRequestId = laya.RequestId };
+                stt.Text) with
+            {
+                Choice = laya.Choice, Confidence = laya.Confidence, ProviderRequestId = laya.RequestId,
+                Assessment = laya.Assessment, SttLatencyMs = stt.LatencyMs, LayaLatencyMs = laya.LatencyMs,
+            };
 
         if (request.Questions.All(question => question.Id != laya.Choice))
             return VoicePipelineResult.Failure(
                 "LayaUnknownChoice",
                 $"Laya вернула неизвестный Вариант «{laya.Choice}»",
                 (int)timer.ElapsedMilliseconds,
-                stt.Text) with { Choice = laya.Choice, Confidence = laya.Confidence, ProviderRequestId = laya.RequestId };
+                stt.Text) with
+            {
+                Choice = laya.Choice, Confidence = laya.Confidence, ProviderRequestId = laya.RequestId,
+                Assessment = laya.Assessment, SttLatencyMs = stt.LatencyMs, LayaLatencyMs = laya.LatencyMs,
+            };
 
         return new VoicePipelineResult(
             stt.Text, laya.Choice, laya.Confidence, (int)timer.ElapsedMilliseconds,
-            true, null, null, laya.RequestId);
+            true, null, null, laya.RequestId, laya.Assessment, stt.LatencyMs, laya.LatencyMs);
     }
 }
 
@@ -179,8 +201,9 @@ public sealed class PolzaSttClient(HttpClient httpClient, VoiceOptions options) 
     public async Task<SttResult> TranscribeAsync(
         Stream audio, string fileName, string? contentType, CancellationToken cancellationToken)
     {
+        var timer = Stopwatch.StartNew();
         if (string.IsNullOrWhiteSpace(options.PolzaApiKey))
-            return new(null, "SttConfigurationMissing", "Не задан ключ polza.ai", null);
+            return new(null, "SttConfigurationMissing", "Не задан ключ polza.ai", null, (int)timer.ElapsedMilliseconds);
 
         using var form = new MultipartFormDataContent();
         using var content = new StreamContent(audio);
@@ -203,7 +226,7 @@ public sealed class PolzaSttClient(HttpClient httpClient, VoiceOptions options) 
             using var response = await httpClient.SendAsync(request, cancellationToken);
             var body = await response.Content.ReadAsStringAsync(cancellationToken);
             if (!response.IsSuccessStatusCode)
-                return new(null, "SttProviderError", $"polza.ai вернул {(int)response.StatusCode}", response.Headers.TryGetValues("x-request-id", out var ids) ? ids.FirstOrDefault() : null);
+                return new(null, "SttProviderError", $"polza.ai вернул {(int)response.StatusCode}", response.Headers.TryGetValues("x-request-id", out var ids) ? ids.FirstOrDefault() : null, (int)timer.ElapsedMilliseconds);
 
             SttResponse? result;
             try
@@ -212,19 +235,19 @@ public sealed class PolzaSttClient(HttpClient httpClient, VoiceOptions options) 
             }
             catch (JsonException)
             {
-                return new(null, "SttInvalidResponse", "polza.ai вернул некорректный JSON", null);
+                return new(null, "SttInvalidResponse", "polza.ai вернул некорректный JSON", null, (int)timer.ElapsedMilliseconds);
             }
             return string.IsNullOrWhiteSpace(result?.Text)
-                ? new(null, "SttInvalidResponse", "polza.ai вернул ответ без текста", null)
-                : new(result.Text, null, null, response.Headers.TryGetValues("x-request-id", out var requestIds) ? requestIds.FirstOrDefault() : null);
+                ? new(null, "SttInvalidResponse", "polza.ai вернул ответ без текста", null, (int)timer.ElapsedMilliseconds)
+                : new(result.Text, null, null, response.Headers.TryGetValues("x-request-id", out var requestIds) ? requestIds.FirstOrDefault() : null, (int)timer.ElapsedMilliseconds);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            return new(null, "SttTimeout", "Истёк таймаут распознавания", null);
+            return new(null, "SttTimeout", "Истёк таймаут распознавания", null, (int)timer.ElapsedMilliseconds);
         }
         catch (HttpRequestException)
         {
-            return new(null, "SttUnavailable", "Сервис распознавания недоступен", null);
+            return new(null, "SttUnavailable", "Сервис распознавания недоступен", null, (int)timer.ElapsedMilliseconds);
         }
     }
 
@@ -234,27 +257,57 @@ public sealed class PolzaSttClient(HttpClient httpClient, VoiceOptions options) 
 public sealed class LayaClient(HttpClient httpClient, VoiceOptions options) : ILayaClient
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly IReadOnlyList<string> ScoreCriteria = Enumerable.Range(0, 11)
+        .Select(value => $"Вежливость ответа на уровне {value * 10}%")
+        .ToArray();
 
     public async Task<LayaResult> DecideAsync(
         string situation, string? brief, string transcript, IReadOnlyList<VoiceQuestion> questions,
         CancellationToken cancellationToken)
     {
+        var timer = Stopwatch.StartNew();
         if (string.IsNullOrWhiteSpace(options.LayaToken))
-            return new(null, null, "LayaConfigurationMissing", "Не задан токен Laya", null);
+            return new(null, null, "LayaConfigurationMissing", "Не задан токен Laya", null, LatencyMs: (int)timer.ElapsedMilliseconds);
+
+        var layaQuestions = new Dictionary<string, object>
+        {
+            ["choice"] = new
+            {
+                type = "choice",
+                instructions = "Выбери Вариант, которому соответствует ответ проводника.",
+                criteria = questions.ToDictionary(question => question.Id, question => question.Text),
+            },
+            ["score"] = new
+            {
+                type = "score",
+                instructions = "Оцени вежливость ответа проводника.",
+                criteria = ScoreCriteria,
+            },
+            ["safety"] = new
+            {
+                type = "noul",
+                instructions = "Есть ли в ответе нарушение требований безопасности?",
+            },
+        };
+        foreach (var stage in LayaAssessment.RoleStageCodes)
+            layaQuestions[stage] = new
+            {
+                type = "noul",
+                instructions = stage switch
+                {
+                    "acknowledge" => "Признал ли проводник ситуацию пассажира?",
+                    "rule" => "Обозначил ли проводник применимое правило?",
+                    "solution" => "Предложил ли проводник решение?",
+                    "reassure" => "Заверил ли проводник пассажира?",
+                    _ => stage,
+                },
+            };
 
         var payload = new
         {
             model = options.LayaModel,
             state = new { situation, conductor_response = transcript, brief },
-            questions = new
-            {
-                choice = new
-                {
-                    type = "choice",
-                    instructions = "Выбери Вариант, которому соответствует ответ проводника.",
-                    criteria = questions.ToDictionary(question => question.Id, question => question.Text),
-                }
-            },
+            questions = layaQuestions,
         };
         using var request = new HttpRequestMessage(HttpMethod.Post, options.LayaEndpoint)
         {
@@ -266,41 +319,74 @@ public sealed class LayaClient(HttpClient httpClient, VoiceOptions options) : IL
             using var response = await httpClient.SendAsync(request, cancellationToken);
             var body = await response.Content.ReadAsStringAsync(cancellationToken);
             if (!response.IsSuccessStatusCode)
-                return new(null, null, "LayaProviderError", $"Laya вернула {(int)response.StatusCode}", null);
+                return new(null, null, "LayaProviderError", $"Laya вернула {(int)response.StatusCode}", null, LatencyMs: (int)timer.ElapsedMilliseconds);
 
-            LayaResponse? responseBody;
+            JsonDocument responseBody;
             try
             {
-                responseBody = JsonSerializer.Deserialize<LayaResponse>(body, JsonOptions);
+                responseBody = JsonDocument.Parse(body);
             }
             catch (JsonException)
             {
-                return new(null, null, "LayaInvalidResponse", "Laya вернула некорректный JSON", null);
+                return new(null, null, "LayaInvalidResponse", "Laya вернула некорректный JSON", null, LatencyMs: (int)timer.ElapsedMilliseconds);
             }
-            var result = responseBody?.Answers?.Choice;
-            var confidence = result?.AnswerConfidence ?? result?.Confidence;
-            return result is null
-                ? new(null, null, "LayaInvalidResponse", "Laya вернула пустой ответ", null)
-                : new(result.Choice, confidence, null, null, null);
+            using (responseBody)
+            {
+                if (!responseBody.RootElement.TryGetProperty("answers", out var answers) ||
+                    !answers.TryGetProperty("choice", out var choiceAnswer))
+                    return new(null, null, "LayaInvalidResponse", "Laya вернула пустой ответ", null, LatencyMs: (int)timer.ElapsedMilliseconds);
+
+                var choice = GetString(choiceAnswer, "choice");
+                var confidence = GetDouble(choiceAnswer, "answer_confidence") ?? GetDouble(choiceAnswer, "confidence");
+                if (string.IsNullOrWhiteSpace(choice))
+                    return new(null, null, "LayaInvalidResponse", "Laya не вернула Вариант", null, LatencyMs: (int)timer.ElapsedMilliseconds);
+
+                var assessment = ParseAssessment(answers);
+                if (assessment.Score is null || assessment.SafetyViolation is null ||
+                    LayaAssessment.RoleStageCodes.Any(stage => !assessment.RoleStages.ContainsKey(stage)))
+                    return new(null, null, "LayaInvalidResponse", "Laya не вернула полную оценку Коммуникации", null, LatencyMs: (int)timer.ElapsedMilliseconds);
+                return new(choice, confidence, null, null, null, assessment, (int)timer.ElapsedMilliseconds);
+            }
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            return new(null, null, "LayaTimeout", "Истёк таймаут Laya", null);
+            return new(null, null, "LayaTimeout", "Истёк таймаут Laya", null, LatencyMs: (int)timer.ElapsedMilliseconds);
         }
         catch (HttpRequestException)
         {
-            return new(null, null, "LayaUnavailable", "Сервис Laya недоступен", null);
+            return new(null, null, "LayaUnavailable", "Сервис Laya недоступен", null, LatencyMs: (int)timer.ElapsedMilliseconds);
         }
     }
 
-    private sealed record LayaResponse(Answers? Answers);
+    private static LayaAssessment ParseAssessment(JsonElement answers)
+    {
+        var score = answers.TryGetProperty("score", out var scoreAnswer)
+            ? GetDouble(scoreAnswer, "score") / (ScoreCriteria.Count - 1)
+            : null;
+        var scoreConfidence = answers.TryGetProperty("score", out scoreAnswer)
+            ? GetDouble(scoreAnswer, "answer_confidence") ?? GetDouble(scoreAnswer, "confidence")
+            : null;
+        var roleStages = LayaAssessment.RoleStageCodes
+            .Where(stage => answers.TryGetProperty(stage, out _))
+            .ToDictionary(stage => stage, stage => GetDouble(answers.GetProperty(stage), "noul") ?? 0);
+        var safety = answers.TryGetProperty("safety", out var safetyAnswer)
+            ? GetDouble(safetyAnswer, "noul")
+            : null;
+        var safetyConfidence = answers.TryGetProperty("safety", out safetyAnswer)
+            ? GetDouble(safetyAnswer, "answer_confidence") ?? GetDouble(safetyAnswer, "confidence")
+            : null;
+        return new(score, scoreConfidence, roleStages, safety, safetyConfidence);
+    }
 
-    private sealed record Answers(ChoiceAnswer? Choice);
+    private static string? GetString(JsonElement element, string property) =>
+        element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
 
-    private sealed record ChoiceAnswer(
-        string? Choice,
-        double? Confidence,
-        [property: JsonPropertyName("answer_confidence")] double? AnswerConfidence);
+    private static double? GetDouble(JsonElement element, string property) =>
+        element.TryGetProperty(property, out var value) && value.TryGetDouble(out var number)
+            ? number
+            : null;
 }
 
 public sealed class PolzaLlmClient(HttpClient httpClient, VoiceOptions options) : ILlmClient

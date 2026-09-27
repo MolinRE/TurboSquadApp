@@ -270,5 +270,8 @@ function VoiceAttemptNotice({ trip }: { trip: TripView }) {
     <div className="flex justify-between gap-2 font-semibold"><span>{attempt.applied ? "Ответ применён" : "Попытка не применена"}</span><span className="tabular-nums">{attempt.latencyMs} мс</span></div>
     {attempt.transcript && <p className="mt-1 text-muted-foreground">«{attempt.transcript}»</p>}
     {attempt.confidence !== null && <p className="mt-1 text-muted-foreground">Уверенность Laya: {Math.round(attempt.confidence * 100)}%</p>}
+    {attempt.score !== null && <p className="mt-1 text-muted-foreground">Вежливость: {Math.round(attempt.score * 100)}%</p>}
+    {attempt.roleStages && <p className="mt-1 text-muted-foreground">Ролевая модель: {Object.entries(attempt.roleStages).map(([stage, value]) => `${stage} ${Math.round(value * 100)}%`).join(" · ")}</p>}
+    {attempt.safetyViolation !== null && <p className="mt-1 text-muted-foreground">Риск безопасности: {Math.round(attempt.safetyViolation * 100)}%</p>}
   </div>;
 }

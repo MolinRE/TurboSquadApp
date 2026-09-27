@@ -46,7 +46,7 @@ public static class TripEndpoints
             .Produces(StatusCodes.Status404NotFound)
             .WithName("AnswerVoiceStep")
             .WithSummary("Ответить голосом")
-            .WithDescription("Принимает готовый аудиофрагмент голосового Шага с idempotency attemptId, распознаёт его через GigaAM-v3, маршрутизирует Laya и применяет выбранный Вариант. Аудио не сохраняется.")
+            .WithDescription("Принимает готовый аудиофрагмент голосового Шага с idempotency attemptId, распознаёт его через GigaAM-v3, получает полный вердикт Laya и возвращает pending-реакцию до завершения реплики пассажира. Аудио не сохраняется.")
             .DisableAntiforgery();
 
         trips.MapGet("/{id:guid}/voice/{attemptId}/reply", async (
@@ -56,7 +56,7 @@ public static class TripEndpoints
             .Produces(StatusCodes.Status404NotFound)
             .WithName("StreamPassengerReply")
             .WithSummary("Поток реплики пассажира")
-            .WithDescription("После применения вердикта Laya потоково передаёт токены реплики пассажира от Qwen. Повторное подключение отдаёт сохранённый итог.");
+            .WithDescription("Потоково передаёт токены реплики пассажира от Qwen после вердикта Laya. Повторное подключение отдаёт сохранённый итог или явную ошибку.");
 
         trips.MapPost("/{id:guid}/timeout", (Guid id, TimeOutRequest request, HttpContext http, TripService service, CancellationToken ct) =>
                 service.ActAsync(UserId(http), id, new TimeOut(), new StepPosition(request.EventId, request.StepId), ct))
