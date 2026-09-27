@@ -16,7 +16,7 @@ public static class BlitzEndpoints
             .ProducesProblem(StatusCodes.Status409Conflict)
             .WithName("StartBlitzSession")
             .WithSummary("Начать Блиц")
-            .WithDescription("Колода — до 10 опубликованных Вопросов с одним ответом (single) в случайном порядке; содержимое Вопросов сохраняется снимком. Первый Вопрос показан сразу, время на него уже идёт.");
+            .WithDescription("Колода — до 10 опубликованных Вопросов с выбором ответа (single и multiple) в случайном порядке; содержимое Вопросов сохраняется снимком. Первый Вопрос показан сразу, время на него уже идёт.");
 
         sessions.MapGet("/{id:guid}", (Guid id, HttpContext http, BlitzSessionService service, CancellationToken ct) =>
                 service.GetAsync(UserId(http), id, ct))
@@ -41,7 +41,7 @@ public static class BlitzEndpoints
             .Produces(StatusCodes.Status404NotFound)
             .WithName("AnswerBlitzQuestion")
             .WithSummary("Ответить на Вопрос")
-            .WithDescription("questionId — Вопрос, на который отвечают: повторный ответ отклоняется. single — ровно один id в selectedOptionIds; orderedStepIds для sequence придёт с #43. Ответ позже лимита больше чем на 1 с по часам сервера засчитывается как «Время вышло».");
+            .WithDescription("questionId — Вопрос, на который отвечают: повторный ответ отклоняется. single — ровно один id в selectedOptionIds; multiple — один или несколько id без повторов, «верно» только за точный набор верных в любом порядке, неполный или лишний набор — «неверно»; orderedStepIds для sequence придёт с #43. Ответ позже лимита больше чем на 1 с по часам сервера засчитывается как «Время вышло».");
 
         sessions.MapPost("/{id:guid}/timeout", (Guid id, BlitzTimeOutRequest request, HttpContext http, BlitzSessionService service, CancellationToken ct) =>
                 service.TimeOutAsync(UserId(http), id, request.QuestionId, ct))

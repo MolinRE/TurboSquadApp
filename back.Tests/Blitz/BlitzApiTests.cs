@@ -10,7 +10,7 @@ using TurboSquadApp.Tests.Trips;
 namespace TurboSquadApp.Tests.Blitz;
 
 // Критерии тикета #41: сессия Блица с одним ответом проходится через API, вердикт и время считает сервер.
-// Вопросы — сиды #40, база — в памяти.
+// Вопросы — сиды #40, база — в памяти; в колоде только два single, multiple проверяет BlitzMultipleTests.
 public class BlitzApiTests(TripApiFactory factory) : IClassFixture<TripApiFactory>
 {
     /// <summary>Верные варианты сидов «Ситуаций на борту» (№21, №32) — независимо от кода сервера.</summary>
@@ -22,11 +22,17 @@ public class BlitzApiTests(TripApiFactory factory) : IClassFixture<TripApiFactor
 
     internal static string Wrong(string questionId) => CorrectOption[questionId] == "a" ? "b" : "a";
 
+    private async Task<BlitzClient> Start()
+    {
+        await SwipeDeckTests.PublishOnly(factory, [.. CorrectOption.Keys]);
+        return await BlitzClient.Start(factory);
+    }
+
     [Fact]
     public async Task Single_session_is_played_through_api_to_result_without_revealing_correct_option_before_answer()
     {
-        var session = await BlitzClient.Start(factory);
-        Assert.Equal(("running", 0, 2), (session.Status, session.Done, session.Total));   // только опубликованные single
+        var session = await Start();
+        Assert.Equal(("running", 0, 2), (session.Status, session.Done, session.Total));
 
         var question = session.Question!;
         Assert.Equal(["questionId", "type", "statement", "topic", "options", "timeLimitMs"], question.AsObject().Select(p => p.Key));
@@ -61,7 +67,7 @@ public class BlitzApiTests(TripApiFactory factory) : IClassFixture<TripApiFactor
     [Fact]
     public async Task Server_clock_turns_late_answer_into_timeout_and_repeated_answer_gives_no_second_result()
     {
-        var session = await BlitzClient.Start(factory);
+        var session = await Start();
         var firstId = session.QuestionId;
         Assert.Equal("InvalidSelection", await session.Rejected("answer", new { questionId = firstId, selectedOptionIds = new[] { "a", "b" } }));
         Assert.Equal("InvalidSelection", await session.Rejected("answer", new { questionId = firstId, selectedOptionIds = new[] { "z" } }));
@@ -98,7 +104,7 @@ public class BlitzApiTests(TripApiFactory factory) : IClassFixture<TripApiFactor
     [Fact]
     public async Task Answer_in_time_is_timed_from_showing_by_server_clock()
     {
-        var session = await BlitzClient.Start(factory);
+        var session = await Start();
         factory.Clock.Advance(TimeSpan.FromMilliseconds(15_900));         // позже лимита, но в пределах допуска
         var outcome = await session.Answer(CorrectOption[session.QuestionId]);
         Assert.Equal(("correct", false, 15_900), ((string)outcome["verdict"]!, (bool)outcome["timedOut"]!, (int)outcome["elapsedMs"]!));
@@ -118,7 +124,7 @@ public class BlitzApiTests(TripApiFactory factory) : IClassFixture<TripApiFactor
         var manager = await factory.CreateUserClient(UserRoles.Manager);
         Assert.Equal(HttpStatusCode.Forbidden, (await manager.PostAsJsonAsync("/api/blitz-sessions", new { })).StatusCode);
 
-        var session = await BlitzClient.Start(factory);
+        var session = await Start();
         var stranger = await factory.CreateConductorClient();
         Assert.Equal(HttpStatusCode.NotFound, (await stranger.GetAsync($"/api/blitz-sessions/{session.Id}")).StatusCode);
         var body = new { questionId = session.QuestionId, selectedOptionIds = new[] { "b" } };
@@ -211,11 +217,15 @@ public class BlitzDeckTests(TripApiFactory factory) : IClassFixture<TripApiFacto
     [Fact]
     public async Task Drafts_never_get_into_session()
     {
-        await SwipeDeckTests.PublishOnly(factory, "bz-dead-phone-ticket", "bz-unattended-item", "sw-pet-carrier");
+        await SwipeDeckTests.PublishOnly(factory, "bz-dead-phone-ticket", "bz-unattended-item", "bz-role-model", "sw-pet-carrier");
 
+        // Свайпы в Блиц не идут, sequence — до #43.
         var session = await BlitzApiTests.BlitzClient.Start(factory);
-        Assert.Equal(1, session.Total);
-        Assert.Equal("bz-dead-phone-ticket", session.QuestionId);
+        Assert.Equal(2, session.Total);
+        await AnswerByType(session);
+        await session.NextQuestion();
+        await AnswerByType(session);
+        Assert.Equal(["bz-dead-phone-ticket", "bz-unattended-item"], session.Answered.Order());
 
         await SwipeDeckTests.PublishOnly(factory, "sw-pet-carrier");
         var http = await factory.CreateConductorClient();
@@ -223,6 +233,9 @@ public class BlitzDeckTests(TripApiFactory factory) : IClassFixture<TripApiFacto
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         Assert.Equal("NoPublishedQuestions", (string)(await response.Content.ReadFromJsonAsync<JsonNode>())!["reason"]!);
     }
+
+    private static Task<JsonNode> AnswerByType(BlitzApiTests.BlitzClient session) =>
+        (string)session.Question!["type"]! == "multiple" ? session.Answer("a", "b", "c") : session.Answer("b");
 
     [Fact]
     public async Task Edit_of_source_question_after_start_does_not_change_started_session()
@@ -247,5 +260,88 @@ public class BlitzDeckTests(TripApiFactory factory) : IClassFixture<TripApiFacto
         var outcome = await session.Answer("b");
         Assert.Equal(("correct", false), ((string)outcome["verdict"]!, (bool)outcome["timedOut"]!));
         Assert.StartsWith("Алкоголь допускается только в вагоне-бистро", (string)outcome["explanation"]!["text"]!);
+    }
+}
+
+// Критерии тикета #42: Вопрос multiple засчитывается только за точный набор верных вариантов.
+// Своя база: в колоде только два multiple из сидов #40.
+public class BlitzMultipleTests(TripApiFactory factory) : IClassFixture<TripApiFactory>
+{
+    /// <summary>Верные варианты сидов «Ситуаций на борту» (№41, №19 и №28) — независимо от кода сервера; у обоих «d» неверный.</summary>
+    private static readonly Dictionary<string, string[]> CorrectOptions = new()
+    {
+        ["bz-unattended-item"] = ["a", "b", "c"],
+        ["bz-passenger-unwell"] = ["a", "b", "c"],
+    };
+
+    private async Task<BlitzApiTests.BlitzClient> Start()
+    {
+        await SwipeDeckTests.PublishOnly(factory, [.. CorrectOptions.Keys]);
+        return await BlitzApiTests.BlitzClient.Start(factory);
+    }
+
+    [Fact]
+    public async Task Exact_set_in_any_order_is_correct_and_correct_options_come_only_with_answer()
+    {
+        var session = await Start();
+        Assert.Equal(("running", 0, 2), (session.Status, session.Done, session.Total));
+        var question = session.Question!;
+        Assert.Equal("multiple", (string)question["type"]!);
+        Assert.All(question["options"]!.AsArray(), option => Assert.Equal(["id", "text"], option!.AsObject().Select(p => p.Key)));
+
+        var firstId = session.QuestionId;
+        var first = await session.Answer("c", "a", "b");
+        Assert.Equal(("correct", false), ((string)first["verdict"]!, (bool)first["timedOut"]!));
+        Assert.Equal(CorrectOptions[firstId], first["correctOptionIds"]!.AsArray().Select(id => (string)id!).Order());
+        Assert.False(string.IsNullOrEmpty((string)first["explanation"]!["keyFact"]!));
+
+        await session.NextQuestion();
+        Assert.Equal("correct", (string)(await session.Answer("b", "c", "a"))["verdict"]!);
+        Assert.Equal(("finished", 2, 2), (session.Status, session.Done, session.Total));
+        Assert.Equal(2, (int)session.Json["result"]!["correct"]!);
+    }
+
+    [Fact]
+    public async Task Missing_or_extra_option_is_wrong_without_partial_credit()
+    {
+        var session = await Start();
+        var firstId = session.QuestionId;
+        var missing = await session.Answer("a", "b");
+        Assert.Equal("wrong", (string)missing["verdict"]!);
+        Assert.Equal(CorrectOptions[firstId], missing["correctOptionIds"]!.AsArray().Select(id => (string)id!).Order());
+
+        await session.NextQuestion();
+        var secondId = session.QuestionId;
+        Assert.Equal("wrong", (string)(await session.Answer("a", "b", "c", "d"))["verdict"]!);
+
+        var result = session.Json["result"]!;
+        Assert.Equal((0, 2), ((int)result["correct"]!, (int)result["total"]!));
+        Assert.Equal([firstId, secondId], result["mistakes"]!.AsArray().Select(m => (string)m!["questionId"]!));
+        var answers = await factory.Database(db => db.BlitzAnswers.Where(a => a.SessionId == session.Id).OrderBy(a => a.Seq).ToListAsync());
+        Assert.Equal(["[\"a\",\"b\"]", "[\"a\",\"b\",\"c\",\"d\"]"], answers.Select(a => a.SelectedOptionIds));
+    }
+
+    [Fact]
+    public async Task Unverifiable_selection_is_rejected_and_timeout_counts_as_mistake_by_rules_of_single()
+    {
+        var session = await Start();
+        var firstId = session.QuestionId;
+        Assert.Equal("InvalidSelection", await session.Rejected("answer", new { questionId = firstId, selectedOptionIds = Array.Empty<string>() }));
+        Assert.Equal("InvalidSelection", await session.Rejected("answer", new { questionId = firstId, selectedOptionIds = new[] { "a", "a", "b", "c" } }));
+        Assert.Equal("InvalidSelection", await session.Rejected("answer", new { questionId = firstId, selectedOptionIds = new[] { "a", "z" } }));
+
+        // Лимит сидов multiple — 20 с; позже больше чем на секунду даже точный набор — «Время вышло».
+        factory.Clock.Advance(TimeSpan.FromMilliseconds(21_001));
+        var late = await session.Answer("a", "b", "c");
+        Assert.Equal(("unknown", true, 20_000), ((string)late["verdict"]!, (bool)late["timedOut"]!, (int)late["elapsedMs"]!));
+        Assert.Equal(CorrectOptions[firstId], late["correctOptionIds"]!.AsArray().Select(id => (string)id!).Order());
+        Assert.Equal("StaleQuestion", await session.Rejected("answer", new { questionId = firstId, selectedOptionIds = new[] { "a", "b", "c" } }));
+
+        await session.NextQuestion();
+        factory.Clock.Advance(TimeSpan.FromSeconds(20));
+        var timedOut = await session.TimeOut();
+        Assert.Equal(("unknown", true), ((string)timedOut["verdict"]!, (bool)timedOut["timedOut"]!));
+        Assert.Equal(["unknown", "unknown"], session.Verdicts);
+        Assert.Equal(2, session.Json["result"]!["mistakes"]!.AsArray().Count);
     }
 }

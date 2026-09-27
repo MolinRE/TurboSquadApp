@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
-import { CircleCheck, CircleX, Timer, Zap } from "lucide-react";
+import { CircleCheck, CircleX, Square, SquareCheck, Timer, Zap } from "lucide-react";
 import { cn } from "cn";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,16 +32,16 @@ type Phase =
   | { kind: "loading"; label: string }
   | { kind: "loadFailed"; message: string; retry: () => void }
   | { kind: "playing" }
-  | { kind: "sending"; selected: string | null }
+  | { kind: "sending"; selected: string[] | null }
   | { kind: "feedback" }
   /** Просим у сервера следующий Вопрос. */
   | { kind: "advancing" }
   | { kind: "finished" };
 
-type LastAnswer = { question: BlitzQuestion; selected: string | null; outcome: BlitzAnswerOutcome };
+type LastAnswer = { question: BlitzQuestion; selected: string[] | null; outcome: BlitzAnswerOutcome };
 
-/** Ошибка действия; resend — вариант, который не дошёл до сервера: кнопка отправляет его ещё раз. */
-type ActionError = { message: string; resend: string | null };
+/** Ошибка действия; resend — выбор, который не дошёл до сервера: кнопка отправляет его ещё раз. */
+type ActionError = { message: string; resend: string[] | null };
 
 /** Текст ошибки из единого формата ошибок API; fetch без ответа сервера — нет связи. */
 function messageOf(error: unknown) {
@@ -63,8 +63,9 @@ function sessionGone(error: unknown) {
 }
 
 /**
- * Блиц через API: вердикт и время считает сервер, экран показывает. Вопрос с одним ответом,
- * обратный отсчёт от показа; истёк — «Время вышло». После ответа — панель с верным вариантом
+ * Блиц через API: вердикт и время считает сервер, экран показывает. Вопрос с одним ответом
+ * (нажатие на вариант — ответ) или с несколькими (отметить варианты и «Ответить»), обратный
+ * отсчёт от показа; истёк — «Время вышло». После ответа — панель с верными вариантами
  * и Пояснением, следующий Вопрос (и его таймер) — по «Дальше». Незаконченную сессию экран
  * продолжает и после перезагрузки.
  */
@@ -169,8 +170,8 @@ export function BlitzSession() {
     setPhase({ kind: "start" });
   }
 
-  /** selected — выбранный вариант; null — «Время вышло». */
-  async function submit(selected: string | null) {
+  /** selected — выбранные варианты; null — «Время вышло». */
+  async function submit(selected: string[] | null) {
     if (sending.current || phase.kind !== "playing" || !session?.question) return;
     sending.current = true;
     const question = session.question;
@@ -182,7 +183,7 @@ export function BlitzSession() {
       const outcome =
         selected === null
           ? await blitzApi.timeOut(session.sessionId, question.questionId)
-          : await blitzApi.answer(session.sessionId, question.questionId, [selected]);
+          : await blitzApi.answer(session.sessionId, question.questionId, selected);
       setLast({ question, selected, outcome });
       setSession(outcome.session);
       setPhase({ kind: "feedback" });
@@ -261,7 +262,7 @@ export function BlitzSession() {
           stoppedAt={stoppedAt}
           sending={phase.kind === "sending" ? phase.selected : undefined}
           disabled={phase.kind !== "playing"}
-          onAnswer={(optionId) => void submit(optionId)}
+          onAnswer={(optionIds) => void submit(optionIds)}
           onExpire={() => void submit(null)}
         />
       ) : null}
@@ -290,8 +291,8 @@ function BlitzStart({ onStart }: { onStart: () => void }) {
         </span>
         <h1 className="text-2xl font-extrabold tracking-tight">Блиц</h1>
         <p className="text-sm text-muted-foreground">
-          Вопросы на время: выберите один верный ответ, пока не закончился отсчёт. После каждого ответа — Пояснение с
-          пунктом Источника.
+          Вопросы на время: выберите верный ответ, а если верных несколько — отметьте все, пока не закончился отсчёт.
+          После каждого ответа — Пояснение с пунктом Источника.
         </p>
         <p className="flex items-center gap-1.5 text-sm font-bold text-brand">
           <Timer className="size-4" aria-hidden />
@@ -305,7 +306,10 @@ function BlitzStart({ onStart }: { onStart: () => void }) {
   );
 }
 
-/** Вопрос: прогресс и обратный отсчёт в шапке, Тема, формулировка и варианты во всю ширину. */
+/**
+ * Вопрос: прогресс и обратный отсчёт в шапке, Тема, формулировка и варианты во всю ширину.
+ * single — нажатие на вариант сразу отвечает; multiple — варианты отмечаются, ответ по «Ответить».
+ */
 function QuestionCard({
   session,
   question,
@@ -320,12 +324,20 @@ function QuestionCard({
   question: BlitzQuestion;
   startedAt: number | null;
   stoppedAt: number | null;
-  /** Вариант в пути: выделен, пока сервер сверяет ответ. */
-  sending: string | null | undefined;
+  /** Выбор в пути: выделен, пока сервер сверяет ответ. */
+  sending: string[] | null | undefined;
   disabled: boolean;
-  onAnswer: (optionId: string) => void;
+  onAnswer: (optionIds: string[]) => void;
   onExpire: () => void;
 }) {
+  const multiple = question.type === "multiple";
+  /** Отмеченные варианты multiple в порядке нажатия: сервер порядок не учитывает. */
+  const [picked, setPicked] = useState<string[]>([]);
+
+  function toggle(optionId: string) {
+    setPicked((ids) => (ids.includes(optionId) ? ids.filter((id) => id !== optionId) : [...ids, optionId]));
+  }
+
   return (
     <article aria-label="Вопрос" className="flex flex-col gap-4 rounded-xl bg-card p-5">
       <div className="flex items-center gap-3">
@@ -337,22 +349,40 @@ function QuestionCard({
         {question.topic}
       </Badge>
       <p className="text-lg leading-snug font-bold">{question.statement}</p>
+      {multiple ? <p className="-mt-2 text-sm text-muted-foreground">Верных несколько — отметьте все</p> : null}
       <div className="grid gap-2">
-        {question.options.map((option) => (
-          <Button
-            key={option.id}
-            variant="outline"
-            disabled={disabled}
-            onClick={() => onAnswer(option.id)}
-            className={cn(
-              "h-auto min-h-12 justify-start bg-card px-4 py-3 text-left text-base font-bold whitespace-normal",
-              sending === option.id && "border-foreground disabled:opacity-100",
-            )}
-          >
-            {option.text}
-          </Button>
-        ))}
+        {question.options.map((option) => {
+          const checked = multiple && picked.includes(option.id);
+          return (
+            <Button
+              key={option.id}
+              variant="outline"
+              disabled={disabled}
+              aria-pressed={multiple ? checked : undefined}
+              onClick={() => (multiple ? toggle(option.id) : onAnswer([option.id]))}
+              className={cn(
+                "h-auto min-h-12 justify-start bg-card px-4 py-3 text-left text-base font-bold whitespace-normal",
+                checked && "border-brand bg-brand-soft hover:bg-brand-soft",
+                sending?.includes(option.id) && "border-foreground disabled:opacity-100",
+              )}
+            >
+              {multiple ? (
+                checked ? (
+                  <SquareCheck className="size-5 text-brand" aria-hidden />
+                ) : (
+                  <Square className="size-5 text-muted-foreground" aria-hidden />
+                )
+              ) : null}
+              {option.text}
+            </Button>
+          );
+        })}
       </div>
+      {multiple ? (
+        <Button disabled={disabled || picked.length === 0} onClick={() => onAnswer(picked)} className="h-12 text-base font-bold">
+          Ответить
+        </Button>
+      ) : null}
       {sending !== undefined ? (
         <p className="text-center text-sm font-bold text-muted-foreground">Сверяем ответ…</p>
       ) : null}
@@ -360,7 +390,10 @@ function QuestionCard({
   );
 }
 
-/** Панель после ответа: вердикт, варианты с верным и выбранным, Пояснение; следующий Вопрос — по кнопке. */
+/**
+ * Панель после ответа: вердикт, варианты с верными и выбранными, Пояснение; следующий Вопрос — по кнопке.
+ * У multiple верный, но не отмеченный вариант подписан «Не отмечен».
+ */
 function FeedbackPanel({
   session,
   last,
@@ -391,7 +424,9 @@ function FeedbackPanel({
       <ul className="grid gap-2">
         {question.options.map((option) => {
           const isCorrect = correct.has(option.id);
-          const isWrongPick = option.id === selected && !isCorrect;
+          const isPicked = selected?.includes(option.id) ?? false;
+          const isWrongPick = isPicked && !isCorrect;
+          const isMissed = question.type === "multiple" && selected !== null && isCorrect && !isPicked;
           return (
             <li
               key={option.id}
@@ -407,7 +442,8 @@ function FeedbackPanel({
               ) : (
                 <span className="size-4 shrink-0" aria-hidden />
               )}
-              {option.text}
+              <span className="flex-1">{option.text}</span>
+              {isMissed ? <span className="shrink-0 text-xs font-bold text-muted-foreground">Не отмечен</span> : null}
             </li>
           );
         })}

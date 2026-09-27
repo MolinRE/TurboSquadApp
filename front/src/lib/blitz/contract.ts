@@ -9,7 +9,7 @@ export type { Explanation, MistakeItem, Verdict };
 
 export type BlitzStatus = "running" | "finished";
 
-/** Тип Вопроса; пока играется только single — один ответ. */
+/** Тип Вопроса: single — один ответ, multiple — несколько, верно только за точный набор; sequence — с #43. */
 export type BlitzQuestionType = "single" | "multiple" | "sequence";
 
 export type BlitzOption = {
@@ -82,7 +82,7 @@ export interface BlitzApi {
   getSession(sessionId: string): Promise<BlitzSession>;
   /** Показать следующий Вопрос: с этого момента сервер засекает время. Повторный вызов его не меняет. */
   showNextQuestion(sessionId: string): Promise<BlitzSession>;
-  /** questionId — Вопрос, на который отвечают: повторный ответ отклоняется. */
+  /** questionId — Вопрос, на который отвечают: повторный ответ отклоняется. single — ровно один id, multiple — один или несколько без повторов. */
   answer(sessionId: string, questionId: string, selectedOptionIds: string[]): Promise<BlitzAnswerOutcome>;
   /** Время вышло: засчитывается как «Не знаю». Сервер сверяет лимит по своим часам. */
   timeOut(sessionId: string, questionId: string): Promise<BlitzAnswerOutcome>;

@@ -7,12 +7,16 @@ using TurboSquadApp.Swipes;
 namespace TurboSquadApp.Blitz;
 
 /// <summary>
-/// Блиц через API (#41): колода — снимок опубликованных Вопросов single на старте, время по часам сервера, ответы
+/// Блиц через API (#41, #42): колода — снимок опубликованных Вопросов single и multiple на старте, время по часам сервера, ответы
 /// в базе. Вердикт считает сервер, клиент только показывает; верные варианты уходят клиенту лишь в ответе на Вопрос.
+/// multiple верен только за точный набор верных вариантов в любом порядке: частичного зачёта нет.
 /// </summary>
 public sealed class BlitzSessionService(AppDbContext dbContext, TimeProvider clock, Random random)
 {
     public const int DeckSize = 10;
+
+    /// <summary>Типы Вопросов, которые уже играются в Блице; sequence придёт с #43.</summary>
+    private static readonly string[] PlayableTypes = [QuestionTypes.Single, QuestionTypes.Multiple];
 
     /// <summary>Лимит на ответ, если у Вопроса своего нет.</summary>
     public const int DefaultTimeLimitMs = 20_000;
@@ -26,10 +30,10 @@ public sealed class BlitzSessionService(AppDbContext dbContext, TimeProvider clo
     public async Task<IResult> StartAsync(Guid userId, CancellationToken cancellationToken)
     {
         var published = await dbContext.Questions
-            .Where(q => q.Type == QuestionTypes.Single && q.Status == QuestionStatuses.Published)
+            .Where(q => PlayableTypes.Contains(q.Type) && q.Status == QuestionStatuses.Published)
             .OrderBy(q => q.Id)
             .ToArrayAsync(cancellationToken);
-        if (published.Length == 0) return Rejected("NoPublishedQuestions", "В Блиц некого взять: нет опубликованных Вопросов с одним ответом");
+        if (published.Length == 0) return Rejected("NoPublishedQuestions", "В Блиц некого взять: нет опубликованных Вопросов с выбором ответа");
         random.Shuffle(published);
 
         var now = clock.GetUtcNow();
@@ -66,8 +70,7 @@ public sealed class BlitzSessionService(AppDbContext dbContext, TimeProvider clo
         if (await LoadAsync(userId, sessionId, cancellationToken) is not { } play) return Results.NotFound();
         if (RejectAnswer(play, questionId) is { } rejection) return rejection;
         var question = play.Current!;
-        if (selectedOptionIds.Count != 1 || !question.Options.Any(option => option.Id == selectedOptionIds[0]))
-            return Rejected("InvalidSelection", "Для Вопроса с одним ответом выберите ровно один из его вариантов");
+        if (InvalidSelection(question, selectedOptionIds) is { } invalid) return invalid;
 
         // Ответ позже лимита больше чем на допуск сети — «Время вышло», как у таймера Рейса и Смены.
         var elapsedMs = ElapsedMs(play, answeredAt);
@@ -93,6 +96,21 @@ public sealed class BlitzSessionService(AppDbContext dbContext, TimeProvider clo
         if (play.Current is not { } question) return Rejected("SessionNotRunning", "Блиц уже закончен");
         if (question.Id != questionId) return Rejected("StaleQuestion", "На этот Вопрос уже ответили");
         if (play.Record.QuestionShownAt is null) return Rejected("QuestionNotShown", "Вопрос ещё не показали: сначала next-question");
+        return null;
+    }
+
+    /// <summary>
+    /// Выбор, который нельзя проверить: не варианты этого Вопроса, повтор варианта, пустой выбор, у single — не ровно один.
+    /// Неполный или лишний набор у multiple — не отказ, а «неверно».
+    /// </summary>
+    private static IResult? InvalidSelection(BlitzQuestion question, IReadOnlyList<string> selectedOptionIds)
+    {
+        var validIds = selectedOptionIds.All(id => question.Options.Any(option => option.Id == id))
+            && selectedOptionIds.Distinct().Count() == selectedOptionIds.Count;
+        if (question.Type == QuestionTypes.Single && (selectedOptionIds.Count != 1 || !validIds))
+            return Rejected("InvalidSelection", "Для Вопроса с одним ответом выберите ровно один из его вариантов");
+        if (selectedOptionIds.Count == 0 || !validIds)
+            return Rejected("InvalidSelection", "Отметьте хотя бы один вариант этого Вопроса, каждый не больше раза");
         return null;
     }
 
