@@ -188,6 +188,7 @@ export function QuestionBank() {
     ? form.options as { right: { label: string; scaleDeltas: Record<string, number> }; left: { label: string; scaleDeltas: Record<string, number> }; correct: "right" | "left" }
     : null;
 
+  if (loading) return <p className="text-sm text-muted-foreground">Загрузка Вопросов…</p>;
   if (accessDenied) return <p role="alert" className="rounded-lg bg-danger-soft p-4 text-danger">Для банка Вопросов нужна роль Методиста.</p>;
 
   return <div className="space-y-5">
@@ -203,8 +204,8 @@ export function QuestionBank() {
           <div className="grid grid-cols-2 gap-2">
             <Input aria-label="Тема" placeholder="Тема" list="question-topics" value={filters.topic ?? ""} onChange={(event) => setFilters({ ...filters, topic: event.target.value })} />
             <datalist id="question-topics">{catalog?.topics.map((topic) => <option key={topic} value={topic} />)}</datalist>
-            <Input aria-label="Категория" placeholder="Категория" list="question-categories" value={filters.category ?? ""} onChange={(event) => setFilters({ ...filters, category: event.target.value })} />
-            <datalist id="question-categories">{catalog?.categories.map((category) => <option key={category} value={category} />)}</datalist>
+            <Input aria-label="Категория" placeholder="Категория" list="question-filter-categories" value={filters.category ?? ""} onChange={(event) => setFilters({ ...filters, category: event.target.value })} />
+            <datalist id="question-filter-categories">{catalog?.categories.map((category) => <option key={category} value={category} />)}</datalist>
             <select aria-label="Класс обслуживания" className={inputStyle} value={filters.serviceClass ?? ""} onChange={(event) => setFilters({ ...filters, serviceClass: event.target.value })}>
               <option value="">Все классы</option>{catalog?.serviceClasses.map((item) => <option key={item.code} value={item.code}>{item.name}</option>)}
             </select>
@@ -216,7 +217,7 @@ export function QuestionBank() {
             </select>
             <Button variant="outline" onClick={() => void run(() => reload())} disabled={busy}>Применить фильтры</Button>
           </div>
-          {loading ? <p className="text-sm text-muted-foreground">Загрузка Вопросов…</p> : questions.length === 0 ? <p className="text-sm text-muted-foreground">Вопросы не найдены</p> :
+          {questions.length === 0 ? <p className="text-sm text-muted-foreground">Вопросы не найдены</p> :
             <ul className="max-h-[70vh] space-y-2 overflow-y-auto">
               {questions.map((question) => <li key={question.id}>
                 <button type="button" onClick={() => choose(question)} className={`w-full rounded-lg border p-3 text-left hover:bg-muted ${selected?.id === question.id ? "border-brand bg-brand-soft" : "border-border"}`}>
@@ -273,11 +274,11 @@ export function QuestionBank() {
               {swipe ? <div className="space-y-4">
                 {(["right", "left"] as const).map((side) => <div key={side} className="rounded-lg border border-border p-3">
                   <div className="mb-2 flex items-center gap-3"><h3 className="font-semibold">{side === "right" ? "Вправо" : "Влево"}</h3><label className="text-xs"><input type="radio" name="correct-swipe" checked={swipe.correct === side} onChange={() => changeOptions({ ...swipe, correct: side })} /> Верная сторона</label></div>
-                  <Input aria-label={`Подпись ${side}`} value={swipe[side].label} onChange={(event) => changeOptions({ ...swipe, [side]: { ...swipe[side], label: event.target.value } })} />
+                  <Input aria-label={side === "right" ? "Подпись справа" : "Подпись слева"} value={swipe[side].label} onChange={(event) => changeOptions({ ...swipe, [side]: { ...swipe[side], label: event.target.value } })} />
                   {issueAt(`options.${side}.label`) && <p className="text-xs text-danger">{issueAt(`options.${side}.label`)}</p>}
                   <div className="mt-3 grid gap-2 sm:grid-cols-2">{catalog?.scales.map((scale) => <label key={scale.code} className="text-xs">{scale.name}<Input type="number" value={swipe[side].scaleDeltas[scale.code] ?? 0} onChange={(event) => changeOptions({ ...swipe, [side]: { ...swipe[side], scaleDeltas: { ...swipe[side].scaleDeltas, [scale.code]: Number(event.target.value) } } })} /></label>)}</div>
                 </div>)}
-                {issues.filter((issue) => issue.path.startsWith("options.")).map((issue) => <p key={`${issue.path}-${issue.message}`} className="text-xs text-danger">{issue.path}: {issue.message}</p>)}
+                {issues.filter((issue) => issue.path.startsWith("options.") && issue.path !== "options.right.label" && issue.path !== "options.left.label").map((issue) => <p key={`${issue.path}-${issue.message}`} className="text-xs text-danger">{issue.path}: {issue.message}</p>)}
               </div> : null}
             </div>
             <div className="space-y-3 border-t pt-4"><h2 className="font-semibold">Пояснение и Источник</h2>
