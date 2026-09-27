@@ -125,6 +125,39 @@ export type AnswerOutcome = {
   shift: ShiftState;
 };
 
+export type SwipeDebriefAnswer = {
+  seq: number;
+  questionId: string;
+  statement: string;
+  rightLabel: string;
+  leftLabel: string;
+  correctSide: SwipeSide;
+  answer: SwipeAnswer | "timeout";
+  verdict: Verdict;
+  isRepeat: boolean;
+  elapsedMs: number;
+  knowledgeDelta: number;
+  scaleChanges: Record<string, number>;
+  explanation: Explanation;
+};
+
+export type SwipeDebrief = {
+  shiftId: string;
+  result: "passed" | "failed";
+  failedScale: string | null;
+  cycle: number | null;
+  scaleNames: Record<string, string>;
+  answers: SwipeDebriefAnswer[];
+};
+
+export type SwipeDebriefListItem = {
+  id: string;
+  result: "passed" | "failed";
+  cycle: number | null;
+  startedAt: string;
+  finishedAt: string;
+};
+
 /** Код отказа правил в ответе 409 (payload.reason). */
 export type ShiftRejection =
   | "ShiftNotRunning"
