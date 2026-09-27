@@ -69,6 +69,19 @@ public class SourceGenerationApiTests
             var reopened = (await client.GetFromJsonAsync<JsonNode>($"/api/cms/questions/{(string)draft!["id"]!}"))!;
             Assert.Equal("draft", (string)reopened["status"]!);
             Assert.NotNull(reopened["quote"]);
+            foreach (var variant in reopened["options"]!["options"]!.AsArray())
+            {
+                Assert.Equal((string)reopened["quote"]!, (string)variant!["quote"]!);
+                Assert.Equal((string)reopened["source"]!, (string)variant["source"]!);
+            }
+            reopened["statement"] = "Исправленная формулировка";
+            reopened["quote"] = "Исправленная цитата";
+            reopened["source"] = "Исправленный пункт";
+            Assert.Equal(HttpStatusCode.OK,
+                (await client.PutAsJsonAsync($"/api/cms/questions/{(string)draft["id"]!}", reopened)).StatusCode);
+            var edited = (await client.GetFromJsonAsync<JsonNode>($"/api/cms/questions/{(string)draft["id"]!}"))!;
+            Assert.Equal((string)edited["source"]!, (string)edited["options"]!["options"]![0]!["source"]!);
+            Assert.Equal((string)edited["quote"]!, (string)edited["options"]!["options"]![0]!["quote"]!);
         }
     }
 
@@ -148,6 +161,7 @@ public class SourceGenerationApiTests
         var result = (await response.Content.ReadFromJsonAsync<JsonNode>())!;
         Assert.Equal(0, (int)result["created"]!);
         Assert.Single(result["errors"]!.AsArray());
+        Assert.Equal(3, generator.Prompts.Count);
         Assert.DoesNotContain("provider failed", result.ToJsonString());
         Assert.Empty((await client.GetFromJsonAsync<JsonNode>($"/api/cms/sources/{id}/drafts"))!.AsArray());
     }

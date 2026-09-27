@@ -3,6 +3,7 @@ namespace TurboSquadApp.Sources;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using TurboSquadApp.Voice;
 
 public sealed record QuestionGenerationPrompt(
@@ -18,6 +19,28 @@ public interface IQuestionGenerationClient
 public sealed class PolzaQuestionGenerationClient(HttpClient httpClient, VoiceOptions options) : IQuestionGenerationClient
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly JsonNode ResponseSchema = JsonNode.Parse("""
+        {
+          "type":"object","properties":{"questions":{"type":"array","items":{
+            "type":"object","properties":{
+              "type":{"type":"string","enum":["single","multiple","sequence","swipe"]},
+              "statement":{"type":"string"},
+              "options":{"anyOf":[
+                {"type":"object","properties":{"options":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"text":{"type":"string"},"correct":{"type":"boolean"}},"required":["id","text","correct"],"additionalProperties":false}}},"required":["options"],"additionalProperties":false},
+                {"type":"object","properties":{"steps":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"text":{"type":"string"}},"required":["id","text"],"additionalProperties":false}}},"required":["steps"],"additionalProperties":false},
+                {"type":"object","properties":{"right":{"type":"object","properties":{"label":{"type":"string"},"scaleDeltas":{"type":"object","additionalProperties":{"type":"number"}}},"required":["label","scaleDeltas"],"additionalProperties":false},"left":{"type":"object","properties":{"label":{"type":"string"},"scaleDeltas":{"type":"object","additionalProperties":{"type":"number"}}},"required":["label","scaleDeltas"],"additionalProperties":false},"correct":{"type":"string","enum":["right","left"]}},"required":["right","left","correct"],"additionalProperties":false}
+              ]},
+              "explanationText":{"type":"string"},"explanationKeyFact":{"type":"string"},
+              "quote":{"type":"string"},"topic":{"type":"string"},
+              "categories":{"type":"array","items":{"type":"string"}},
+              "serviceClasses":{"type":"array","items":{"type":"string"}},
+              "baseFrequency":{"type":"number"},"timeLimitSec":{"type":"integer"}
+            },
+            "required":["type","statement","options","explanationText","explanationKeyFact","quote","topic","categories","serviceClasses","baseFrequency","timeLimitSec"],
+            "additionalProperties":false
+          }}},"required":["questions"],"additionalProperties":false
+        }
+        """)!;
     private const string SystemPrompt = """
         Ты помогаешь Методисту составить Вопросы для обучения проводников. Верни только JSON-объект вида
         {"questions":[{"type":"single|multiple|sequence|swipe","statement":"...","options":{},
@@ -41,7 +64,7 @@ public sealed class PolzaQuestionGenerationClient(HttpClient httpClient, VoiceOp
             model = options.LlmModel,
             stream = false,
             max_tokens = 3000,
-            response_format = new { type = "json_object" },
+            response_format = new { type = "json_schema", json_schema = new { name = "question_drafts", strict = true, schema = ResponseSchema } },
             messages = new[]
             {
                 new { role = "system", content = SystemPrompt },

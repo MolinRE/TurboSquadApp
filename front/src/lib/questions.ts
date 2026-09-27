@@ -2,9 +2,9 @@ import { apiJson } from "@/lib/api";
 
 export type QuestionType = "single" | "multiple" | "sequence" | "swipe";
 export type QuestionStatus = "draft" | "published";
-export type ChoiceOption = { id: string; text: string; correct: boolean };
-export type SequenceStep = { id: string; text: string };
-export type SwipeSide = { label: string; scaleDeltas: Record<string, number> };
+export type ChoiceOption = { id: string; text: string; correct: boolean; quote?: string; source?: string };
+export type SequenceStep = { id: string; text: string; quote?: string; source?: string };
+export type SwipeSide = { label: string; scaleDeltas: Record<string, number>; quote?: string; source?: string };
 export type QuestionOptions =
   | { options: ChoiceOption[] }
   | { steps: SequenceStep[] }

@@ -97,12 +97,12 @@ public sealed class QuestionGenerationService(AppDbContext db, IQuestionGenerati
                     if (drafts.Count > 0) await db.SaveChangesAsync(cancellationToken);
                 }
                 if (feedback.Count == 0) break;
-                if (attempt == 2 || response is null)
+                if (attempt == 2)
                 {
                     errors.Add($"Пункт {section.Reference}: {string.Join("; ", feedback.Distinct())}");
                     break;
                 }
-                var cleanedResponse = SourceText.RemovePersonalData(response);
+                var cleanedResponse = response is null ? string.Empty : SourceText.RemovePersonalData(response);
                 response = await CallAsync(initialPrompt with
                 {
                     Feedback = string.Join("; ", feedback.Distinct()),
@@ -163,18 +163,24 @@ public sealed class QuestionGenerationService(AppDbContext db, IQuestionGenerati
             item.TryGetProperty(name, out var property) && property.ValueKind == kind;
     }
 
-    private static QuestionRecord Record(QuestionEditorInput input, Guid sourceId, string title, string section) => new()
+    private static QuestionRecord Record(QuestionEditorInput input, Guid sourceId, string title, string section)
     {
-        Id = $"q-{Guid.NewGuid():N}", Status = QuestionStatuses.Draft, SourceId = sourceId,
-        Type = input.Type, Statement = input.Statement ?? string.Empty,
-        Options = input.Options.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null ? "{}" : input.Options.GetRawText(),
-        ExplanationText = input.ExplanationText ?? string.Empty,
-        ExplanationKeyFact = input.ExplanationKeyFact ?? string.Empty,
-        Quote = input.Quote, Source = $"{title}, п. {section}", Topic = input.Topic ?? string.Empty,
-        Categories = JsonSerializer.Serialize(input.Categories ?? []),
-        ServiceClasses = JsonSerializer.Serialize(input.ServiceClasses ?? []),
-        BaseFrequency = input.BaseFrequency, TimeLimitSec = input.TimeLimitSec,
-    };
+        var point = $"{title}, п. {section}";
+        var options = input.Options.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null
+            ? "{}" : input.Options.GetRawText();
+        options = QuestionOptionsCodec.WithSource(input.Type, options, input.Quote, point);
+        return new QuestionRecord
+        {
+            Id = $"q-{Guid.NewGuid():N}", Status = QuestionStatuses.Draft, SourceId = sourceId,
+            Type = input.Type, Statement = input.Statement ?? string.Empty, Options = options,
+            ExplanationText = input.ExplanationText ?? string.Empty,
+            ExplanationKeyFact = input.ExplanationKeyFact ?? string.Empty,
+            Quote = input.Quote, Source = point, Topic = input.Topic ?? string.Empty,
+            Categories = JsonSerializer.Serialize(input.Categories ?? []),
+            ServiceClasses = JsonSerializer.Serialize(input.ServiceClasses ?? []),
+            BaseFrequency = input.BaseFrequency, TimeLimitSec = input.TimeLimitSec,
+        };
+    }
 
     private static string Key(string statement) =>
         Regex.Replace(statement.ToLowerInvariant().Replace('ё', 'е'), @"[^\p{L}\p{N}]+", " ").Trim();
