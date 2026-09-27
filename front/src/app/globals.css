@@ -152,6 +152,17 @@
   }
 }
 
+/* Рука на фоне пустой зоны Смены на свайпах покачивается: свайп работает и здесь. */
+@keyframes swipe-sway {
+  0%,
+  100% {
+    transform: translateX(-10px) rotate(-10deg);
+  }
+  50% {
+    transform: translateX(10px) rotate(10deg);
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

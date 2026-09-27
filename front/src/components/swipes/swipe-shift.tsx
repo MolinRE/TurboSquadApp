@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useEffectEvent, useState, type ReactNode } from "react";
-import { ArrowLeft, ArrowRight, ArrowUp, Zap } from "lucide-react";
+import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
+import { ArrowLeft, ArrowRight, ArrowUp, Hand, Zap } from "lucide-react";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
 import { Countdown } from "@/components/game/countdown";
@@ -27,6 +27,8 @@ import { useSwipeDrag } from "./use-swipe-drag";
 /** Пауза после верного ответа: успеть взглянуть на Вопрос и Пояснение. В Циклах 2–3 её нет. */
 const CORRECT_PAUSE_MS = 2500;
 const GESTURE_HINT_KEY = "turbo-brigada:swipes:gesture-hint-seen";
+/** Меньше этой высоты фон-подсказка не помещается целиком и не показывается. */
+const HINT_MIN_HEIGHT = 128;
 
 type Phase =
   | { kind: "choosing" }
@@ -279,6 +281,41 @@ export function SwipeShift() {
         <p role="alert" className="text-sm text-danger">
           {actionError}
         </p>
+      ) : null}
+
+      {!showingFeedback && card ? <SwipeAnywhereHint /> : null}
+    </div>
+  );
+}
+
+/**
+ * Фон пустой зоны под кнопками: свайпать можно здесь, не обязательно тянуть саму карточку.
+ * Касания проходят сквозь него к экрану. Если места мало, не показывается, чтобы не обрезаться.
+ */
+function SwipeAnywhereHint() {
+  const zone = useRef<HTMLDivElement>(null);
+  const [fits, setFits] = useState(false);
+
+  useEffect(() => {
+    const element = zone.current;
+    if (!element) return;
+    const observer = new ResizeObserver(([entry]) => setFits(entry.contentRect.height >= HINT_MIN_HEIGHT));
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div ref={zone} aria-hidden className="pointer-events-none relative min-h-0 flex-1">
+      {fits ? (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-muted-foreground/45">
+          <ArrowUp className="size-5" />
+          <div className="flex items-center gap-3">
+            <ArrowLeft className="size-5" />
+            <Hand className="size-10 motion-safe:animate-[swipe-sway_2.4s_ease-in-out_infinite]" />
+            <ArrowRight className="size-5" />
+          </div>
+          <p className="text-xs font-bold">Смахивайте в любом месте экрана</p>
+        </div>
       ) : null}
     </div>
   );
