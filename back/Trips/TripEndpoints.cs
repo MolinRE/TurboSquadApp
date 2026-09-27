@@ -85,6 +85,16 @@ public static class TripEndpoints
             .WithSummary("Разбор Рейса, слой А")
             .WithDescription("Только по законченному Рейсу: итог, Проактивный выбор, по каждому Событию — результат и решения с изменениями Шкал, комментарием и Источником.");
 
+        trips.MapGet("/{id:guid}/debrief/explanation", (Guid id, HttpContext http, TripService service, CancellationToken ct) =>
+                service.DebriefExplanationAsync(UserId(http), id, ct))
+            .Produces<DebriefExplanationView>()
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status503ServiceUnavailable)
+            .Produces(StatusCodes.Status404NotFound)
+            .WithName("GetTripDebriefExplanation")
+            .WithSummary("Разбор Рейса, слой Б: ИИ-объяснение последствий")
+            .WithDescription("Только по законченному Рейсу. LLM пишет 3–4 предложения о последствиях решений, опираясь только на факты слоя А (решения, Шкалы, комментарии, Источники, расшифровки). Не сохраняется: при каждом запросе текст пишется заново. Очки и Шкалы не меняет. 503 — модель не ответила.");
+
         trips.MapGet("/debriefs", (HttpContext http, TripService service, CancellationToken ct) =>
                 service.ListDebriefsAsync(UserId(http), ct))
             .Produces<IReadOnlyList<TripDebriefListItem>>()
