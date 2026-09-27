@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using TurboSquadApp.Questions;
 
 namespace TurboSquadApp.Data;
 
@@ -24,7 +25,11 @@ public sealed class QuestionRecord
     /// Варианты и верные ответы по типу (jsonb): свайп — SwipeOptions, один или несколько ответов —
     /// ChoiceOptions, последовательность — SequenceOptions.
     /// </summary>
-    public string Options { get; set; } = string.Empty;
+    public string Options { get; set; } = "{}";
+
+    public IQuestionOptions ReadOptions() => QuestionOptionsCodec.Read(Type, Options);
+
+    public void SetOptions(IQuestionOptions options) => Options = QuestionOptionsCodec.Write(Type, options);
 
     /// <summary>Пояснение: одна-две фразы и ключевой факт — дословный фрагмент текста.</summary>
     public string ExplanationText { get; set; } = string.Empty;

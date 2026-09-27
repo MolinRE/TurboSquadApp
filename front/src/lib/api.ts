@@ -54,12 +54,13 @@ export type TripDebrief = {
   }>;
 };
 
-type ApiErrorPayload = {
+export type ApiErrorPayload = {
   reason?: string;
   detail?: string;
   message?: string;
   trip?: TripView;
   attempt?: VoiceAttempt;
+  errors?: Array<{ path: string; message: string }>;
 };
 
 export type TokenResponse = {
@@ -180,8 +181,11 @@ async function json<T>(path: string, init: RequestInit = {}): Promise<T> {
     const payload = await readPayload(response);
     throw new ApiError(payload?.detail ?? payload?.message ?? "API вернул ошибку", response.status, payload);
   }
+  if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 }
+
+export { json as apiJson };
 
 export function getCurrentUser() {
   return json<CurrentUser>("/api/auth/me");
