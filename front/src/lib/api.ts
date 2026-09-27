@@ -47,11 +47,41 @@ export type TripView = {
 export type TripDebrief = {
   result: string;
   summary: string;
+  items: Array<
+    | { kind: "proactiveChoice"; situation: string; choice: string }
+    | {
+        kind: "event";
+        eventId: string;
+        version: number;
+        title: string;
+        result: string;
+        outcomeSituation: string | null;
+        decisions: Array<{
+          stepId: string;
+          situation: string;
+          variantId: string | null;
+          timedOut: boolean;
+          text: string;
+          changes: Array<{ scale: string; name: string; applied: number; before: number; after: number }>;
+          comment: string | null;
+          criticalError: boolean;
+          knowledgeDelta: number;
+          elapsedMs: number | null;
+        }>;
+      }
+  >;
   voiceAttempts: Array<VoiceAttempt & {
     eventId: string;
     eventVersion: number;
     stepId: string;
   }>;
+};
+
+export type TripDebriefListItem = {
+  id: string;
+  result: "arrived" | "failed";
+  startedAt: string;
+  finishedAt: string;
 };
 
 export type ApiErrorPayload = {
@@ -243,6 +273,10 @@ export function startTrip(serviceClass: string) {
 
 export function getTripDebrief(tripId: string) {
   return json<TripDebrief>(`/api/trips/${tripId}/debrief`);
+}
+
+export function listTripDebriefs() {
+  return json<TripDebriefListItem[]>("/api/trips/debriefs");
 }
 
 export function getVoiceAnalytics() {

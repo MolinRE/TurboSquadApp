@@ -11,6 +11,41 @@ namespace TurboSquadApp.Tests.Events;
 public class EventCmsApiTests
 {
     [Fact]
+    public async Task Methodologist_can_create_edit_and_publish_a_new_event_draft()
+    {
+        await using var factory = new TripApiFactory();
+        using var methodologist = await factory.CreateUserClient(UserRoles.Methodologist);
+        using var conductor = await factory.CreateConductorClient();
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await conductor.PostAsync("/api/cms/events/drafts", null)).StatusCode);
+
+        var created = await methodologist.PostAsync("/api/cms/events/drafts", null);
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var draft = (await created.Content.ReadFromJsonAsync<JsonNode>())!;
+        var draftId = (string)draft["id"]!;
+        var eventId = (string)JsonNode.Parse((string)draft["document"]!)!["id"]!;
+        Assert.Contains((await methodologist.GetFromJsonAsync<JsonNode>("/api/cms/events/drafts"))!.AsArray(),
+            item => (string)item!["id"]! == draftId);
+
+        var document = JsonNode.Parse(SeedContent.Events.Single(item => item.Document.Id == "sit-06").Json)!;
+        document["id"] = eventId;
+        document["version"] = 1;
+        document["title"] = "Новое Событие Методиста";
+        var saved = await methodologist.PutAsJsonAsync($"/api/cms/events/drafts/{draftId}",
+            new { document = document.ToJsonString() });
+        Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
+        var checkedDraft = await methodologist.PostAsync($"/api/cms/events/drafts/{draftId}/validate", null);
+        Assert.True((bool)(await checkedDraft.Content.ReadFromJsonAsync<JsonNode>())!["isValid"]!);
+        var published = await methodologist.PostAsync($"/api/cms/events/drafts/{draftId}/publish", null);
+        Assert.Equal(HttpStatusCode.Created, published.StatusCode);
+        Assert.Equal(1, (int)(await published.Content.ReadFromJsonAsync<JsonNode>())!["version"]!);
+        Assert.Contains((await methodologist.GetFromJsonAsync<JsonNode>("/api/cms/events"))!.AsArray(),
+            item => (string)item!["id"]! == eventId && (int)item["latestVersion"]! == 1);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await methodologist.GetAsync($"/api/cms/events/drafts/{draftId}")).StatusCode);
+    }
+
+    [Fact]
     public async Task Methodologist_can_list_versions_and_validate_a_broken_editor_document()
     {
         await using var factory = new TripApiFactory();

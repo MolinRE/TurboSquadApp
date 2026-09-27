@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import Link from "next/link";
 import { ArrowLeft, ArrowRight, ArrowUp, Hand, Zap } from "lucide-react";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,7 @@ import { ExplanationText, SourceLine, VerdictLabel } from "./explanation";
 import { formatSeconds } from "./format";
 import { ModeChoice } from "./mode-choice";
 import { ShiftSummary } from "./shift-summary";
+import { SwipeReview } from "./swipe-review";
 import { SWIPE_EXIT_MS, SwipeCard } from "./swipe-card";
 import { useSwipeDrag } from "./use-swipe-drag";
 
@@ -366,12 +368,16 @@ export function SwipeShift() {
 
   if (phase.kind === "finished") {
     return (
-      <ShiftSummary
-        shift={shift}
-        onRestart={restart}
-        onNextCycle={nextCycle}
-        onWorkOnMistakes={workOnMistakes}
-      />
+      <div className="flex flex-1 flex-col gap-3">
+        <ShiftSummary
+          shift={shift}
+          onRestart={restart}
+          onNextCycle={nextCycle}
+          onWorkOnMistakes={workOnMistakes}
+        />
+        <SwipeReview shiftId={shift.shiftId} embedded />
+        <Button asChild variant="outline"><Link href={`/reviews/swipe-${shift.shiftId}`}>Открыть Разбор</Link></Button>
+      </div>
     );
   }
 

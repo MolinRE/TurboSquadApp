@@ -112,7 +112,7 @@ public static partial class SourceText
     [GeneratedRegex(@"^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$")]
     private static partial Regex TableSeparator();
 
-    [GeneratedRegex(@"(?<![\w.+-])[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}(?![\w.-])", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"(?<![\w.+-])[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}(?![\w-]|\.[A-Za-z])", RegexOptions.IgnoreCase)]
     private static partial Regex Email();
 
     [GeneratedRegex(@"\b(?:паспорт(?:\s+(?:серия|серии))?|серия)\s*[:№]?\s*\d{4}\s*(?:(?:номер|№)\s*)?\d{6}\b", RegexOptions.IgnoreCase)]
