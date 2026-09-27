@@ -23,6 +23,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<BlitzAnswerRecord> BlitzAnswers => Set<BlitzAnswerRecord>();
     public DbSet<KnowledgeMasteryRecord> KnowledgeMasteries => Set<KnowledgeMasteryRecord>();
     public DbSet<ConductorProfileRecord> ConductorProfiles => Set<ConductorProfileRecord>();
+    public DbSet<AchievementAwardRecord> AchievementAwards => Set<AchievementAwardRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -77,6 +78,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         SwipeShiftModel.Configure(modelBuilder);
         BlitzSessionModel.Configure(modelBuilder);
         KnowledgeModel.Configure(modelBuilder);
+        AchievementModel.Configure(modelBuilder);
         SeedOrganization(modelBuilder);
     }
 
