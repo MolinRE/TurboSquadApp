@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
+using Microsoft.Extensions.Configuration;
 using TurboSquadApp.Voice;
 
 namespace TurboSquadApp.Tests.Voice;
@@ -100,6 +101,18 @@ public class VoiceClientTests
     }
 
     [Fact]
+    public void Passenger_reply_model_is_configured_apart_from_question_generation_model()
+    {
+        var defaults = VoiceOptions.FromConfiguration(new ConfigurationBuilder().Build());
+        Assert.Equal(("qwen/qwen3-next-80b-a3b-instruct", "qwen/qwen3.6-35b-a3b"), (defaults.PassengerReplyModel, defaults.LlmModel));
+
+        var configured = VoiceOptions.FromConfiguration(new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["Voice:PassengerReplyModel"] = "other/model" })
+            .Build());
+        Assert.Equal("other/model", configured.PassengerReplyModel);
+    }
+
+    [Fact]
     public async Task Polza_qwen_stream_reads_content_only_and_sends_deterministic_options()
     {
         HttpRequestMessage? captured = null;
@@ -128,7 +141,7 @@ public class VoiceClientTests
         Assert.Equal("Добрый день. Прошу пройти.", string.Concat(tokens.Select(token => token.Text)));
         Assert.NotNull(captured);
         var json = JsonDocument.Parse(capturedBody!).RootElement;
-        Assert.Equal("qwen/qwen3.6-35b-a3b", json.GetProperty("model").GetString());
+        Assert.Equal("qwen/qwen3-next-80b-a3b-instruct", json.GetProperty("model").GetString());
         Assert.True(json.GetProperty("stream").GetBoolean());
         Assert.Equal("low", json.GetProperty("reasoning").GetProperty("effort").GetString());
         Assert.Equal("Bearer", captured!.Headers.Authorization!.Scheme);
