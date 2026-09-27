@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Countdown } from "@/components/game/countdown";
 import { ScalesPanel } from "@/components/game/scale-meter";
 import { Stopwatch } from "@/components/game/stopwatch";
-import { TripDebriefFacts, roleStageSummary } from "@/components/game/trip-debrief-facts";
+import { TripDebriefFacts, TripExplanation, roleStageSummary } from "@/components/game/trip-debrief-facts";
 import {
   ApiError,
   chooseProactive,
@@ -249,6 +249,7 @@ export function TripGame() {
           <CardContent className="flex flex-col gap-4">
             {debriefError && <p role="alert" className="text-sm text-danger">Разбор не загрузился: {debriefError}</p>}
             {debrief && <TripDebriefFacts debrief={debrief} />}
+            {debrief && <TripExplanation tripId={trip.id} />}
             {debrief && <Button asChild variant="outline"><Link href={`/reviews/trip-${trip.id}`}>Открыть Разбор</Link></Button>}
             <div className="grid grid-cols-2 gap-2">
               <Button variant="outline" onClick={reset}>Новый Рейс</Button>

@@ -346,12 +346,43 @@ public sealed class TripService(
         if (await LoadAsync(userId, tripId, cancellationToken) is not { } trip) return Results.NotFound();
         if (!trip.State.IsFinished)
             return Rejected("TripNotFinished", "Разбор строится после Рейса: Рейс ещё не закончен");
+        return Results.Ok(await BuildDebriefAsync(tripId, trip.State, cancellationToken));
+    }
+
+    /// <summary>Слой Б Разбора: LLM пишет последствия по фактам слоя А. Пока не сохраняется.</summary>
+    public async Task<IResult> DebriefExplanationAsync(Guid userId, Guid tripId, CancellationToken cancellationToken)
+    {
+        if (await LoadAsync(userId, tripId, cancellationToken) is not { } trip) return Results.NotFound();
+        if (!trip.State.IsFinished)
+            return Rejected("TripNotFinished", "Разбор строится после Рейса: Рейс ещё не закончен");
+        var debrief = await BuildDebriefAsync(tripId, trip.State, cancellationToken);
+        var text = new System.Text.StringBuilder();
+        try
+        {
+            await foreach (var token in llmClient.StreamAsync(DebriefExplanation.RequestFor(debrief), cancellationToken))
+                text.Append(token.Text);
+        }
+        catch (LlmProviderException ex)
+        {
+            return Results.Problem(
+                title: "Объяснение не получено", detail: ex.Message, statusCode: StatusCodes.Status503ServiceUnavailable,
+                extensions: new Dictionary<string, object?> { ["reason"] = ex.Code });
+        }
+        if (text.Length == 0)
+            return Results.Problem(
+                title: "Объяснение не получено", detail: "Модель вернула пустой ответ", statusCode: StatusCodes.Status503ServiceUnavailable,
+                extensions: new Dictionary<string, object?> { ["reason"] = "LlmEmptyReply" });
+        return Results.Ok(new DebriefExplanationView(text.ToString().Trim(), voiceOptions.PassengerReplyModel));
+    }
+
+    private async Task<Debrief> BuildDebriefAsync(Guid tripId, TripState state, CancellationToken cancellationToken)
+    {
         var facts = await dbContext.TripJournal
             .Where(row => row.TripId == tripId && row.Kind == TripJournalKinds.Decision)
             .OrderBy(row => row.Seq)
             .Select(row => new DebriefDecisionFacts(row.KnowledgeDelta, row.ElapsedMs))
             .ToListAsync(cancellationToken);
-        return Results.Ok(Debrief.Build(trip.State, facts));
+        return Debrief.Build(state, facts);
     }
 
     public async Task<IResult> ListDebriefsAsync(Guid userId, CancellationToken cancellationToken)

@@ -1,6 +1,12 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { Check, Sparkles, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { TripDebrief } from "@/lib/api";
+import { Skeleton } from "@/components/ui/skeleton";
+import { SourceLine } from "@/components/swipes/explanation";
+import { getTripDebriefExplanation, type TripDebrief, type TripDebriefExplanation } from "@/lib/api";
 
 const signed = (value: number) => `${value > 0 ? "+" : ""}${value}`;
 const roleStages = [
@@ -17,13 +23,44 @@ export function roleStageSummary(stages: Record<string, number>): string {
     .join(" · ");
 }
 
+/** Этап Ролевой модели засчитан, если Laya оценила его хотя бы в половину. */
+const STAGE_HEARD = 0.5;
+
+type VoiceAttempt = TripDebrief["voiceAttempts"][number];
+
+/** Что проводник сказал на Шаге: последняя принятая попытка, этапы Ролевой модели ✓/✗, вежливость и риск. */
+function VoiceFacts({ attempt }: { attempt: VoiceAttempt }) {
+  const stages = roleStages.filter(([code]) => attempt.roleStages?.[code] !== undefined);
+  return (
+    <div className="mt-2 flex flex-col gap-1 rounded-lg bg-muted p-3 text-sm">
+      {attempt.transcript && <p>Вы сказали: «{attempt.transcript}»</p>}
+      {stages.length > 0 && (
+        <p className="flex flex-wrap gap-x-3 gap-y-1">
+          {stages.map(([code, name]) => {
+            const heard = attempt.roleStages![code] >= STAGE_HEARD;
+            const Icon = heard ? Check : X;
+            return (
+              <span key={code} className={heard ? "flex items-center gap-1 text-brand" : "flex items-center gap-1 text-danger"}>
+                <Icon className="size-3.5" aria-hidden />
+                {name} <span className="sr-only">{heard ? "прозвучало" : "пропущено"}</span>
+              </span>
+            );
+          })}
+        </p>
+      )}
+      <p className="text-xs text-muted-foreground">
+        {[
+          attempt.score !== null && `Вежливость ${Math.round(attempt.score * 100)}%`,
+          attempt.safetyViolation !== null && `риск нарушения безопасности ${Math.round(attempt.safetyViolation * 100)}%`,
+        ].filter(Boolean).join(" · ")}
+      </p>
+    </div>
+  );
+}
+
 export function TripDebriefFacts({ debrief }: { debrief: TripDebrief }) {
-  // Голосовую попытку подписываем ситуацией Шага, а не его идентификаторами.
-  const situations = new Map<string, string>();
-  for (const item of debrief.items) {
-    if (item.kind !== "event") continue;
-    for (const decision of item.decisions) situations.set(`${item.eventId}/${decision.stepId}`, `${item.title}: ${decision.situation}`);
-  }
+  const attemptOf = (eventId: string, stepId: string) =>
+    debrief.voiceAttempts.findLast((attempt) => attempt.eventId === eventId && attempt.stepId === stepId && attempt.applied);
   return (
     <div className="flex flex-col gap-3">
       {debrief.items.map((item, index) => item.kind === "proactiveChoice" ? (
@@ -59,28 +96,59 @@ export function TripDebriefFacts({ debrief }: { debrief: TripDebrief }) {
                 )}
                 <p className="mt-2 text-sm">Очки знаний: {signed(decision.knowledgeDelta)}</p>
                 {decision.elapsedMs !== null && <p className="text-xs text-muted-foreground">Время ответа: {(decision.elapsedMs / 1000).toFixed(1)} с</p>}
+                {(() => {
+                  const attempt = attemptOf(item.eventId, decision.stepId);
+                  return attempt ? <VoiceFacts attempt={attempt} /> : null;
+                })()}
                 {decision.comment && <p className="mt-2 rounded-lg bg-brand-soft p-3 text-sm">{decision.comment}</p>}
+                {decision.source && <div className="mt-1"><SourceLine source={decision.source} /></div>}
               </section>
             ))}
             {item.outcomeSituation && <p className="border-t border-border pt-3 text-sm">{item.outcomeSituation}</p>}
           </CardContent>
         </Card>
       ))}
-      {debrief.voiceAttempts.length > 0 && (
-        <section aria-label="Разбор голосовых ответов" className="flex flex-col gap-3">
-          <h3 className="font-semibold">Разбор голосовых ответов</h3>
-          {debrief.voiceAttempts.map((attempt) => (
-            <div key={attempt.attemptId} className="rounded-lg bg-muted p-3 text-sm">
-              <p className="font-semibold">{situations.get(`${attempt.eventId}/${attempt.stepId}`) ?? `Событие ${attempt.eventId}, Шаг ${attempt.stepId}`}</p>
-              {attempt.transcript && <p className="mt-1">«{attempt.transcript}»</p>}
-              {attempt.score !== null && <p className="mt-1">Вежливость: {Math.round(attempt.score * 100)}%{attempt.scoreConfidence !== null && ` · уверенность ${Math.round(attempt.scoreConfidence * 100)}%`}</p>}
-              {attempt.roleStages && <p className="mt-1">Ролевая модель: {roleStageSummary(attempt.roleStages)}</p>}
-              {attempt.safetyViolation !== null && <p className="mt-1">Риск нарушения безопасности: {Math.round(attempt.safetyViolation * 100)}%{attempt.safetyConfidence !== null && ` · уверенность ${Math.round(attempt.safetyConfidence * 100)}%`}</p>}
-              {attempt.errorCode && <p className="mt-1 text-danger">Ошибка: {attempt.errorCode}</p>}
-            </div>
-          ))}
-        </section>
-      )}
     </div>
+  );
+}
+
+/**
+ * Разбор, слой Б: ИИ-объяснение последствий. Грузится после слоя А и пишется заново при каждом
+ * открытии; не ответила модель — слой А остаётся, а здесь короткая строка.
+ */
+export function TripExplanation({ tripId }: { tripId: string }) {
+  const [explanation, setExplanation] = useState<TripDebriefExplanation | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    getTripDebriefExplanation(tripId).then(
+      (value) => { if (active) setExplanation(value); },
+      () => { if (active) setFailed(true); },
+    );
+    return () => { active = false; };
+  }, [tripId]);
+
+  return (
+    <section aria-label="Почему это важно" aria-busy={!explanation && !failed} className="flex flex-col gap-2 rounded-xl bg-brand-soft p-4">
+      <h3 className="flex items-center gap-2 font-extrabold">
+        <Sparkles className="size-4 text-brand" aria-hidden />
+        Почему это важно
+      </h3>
+      {explanation ? (
+        <>
+          <p className="text-sm leading-relaxed">{explanation.text}</p>
+          <p className="text-xs text-muted-foreground">Сгенерировано моделью {explanation.model} · на очки не влияет</p>
+        </>
+      ) : failed ? (
+        <p className="text-sm text-muted-foreground">Объяснение сейчас недоступно — факты Разбора выше.</p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-4 w-full bg-card" />
+          <Skeleton className="h-4 w-11/12 bg-card" />
+          <Skeleton className="h-4 w-2/3 bg-card" />
+        </div>
+      )}
+    </section>
   );
 }

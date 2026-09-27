@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TripDebriefFacts } from "@/components/game/trip-debrief-facts";
+import { TripDebriefFacts, TripExplanation } from "@/components/game/trip-debrief-facts";
 import { getTripDebrief, type TripDebrief } from "@/lib/api";
 
 export function TripReview({ tripId }: { tripId: string }) {
@@ -31,6 +31,7 @@ export function TripReview({ tripId }: { tripId: string }) {
       {debrief && <>
         <p className={debrief.result === "failed" ? "text-danger" : "text-brand"}>{debrief.summary}</p>
         <TripDebriefFacts debrief={debrief} />
+        <TripExplanation tripId={tripId} />
       </>}
       <Button asChild variant="outline"><Link href="/profile">К истории Разборов</Link></Button>
     </main>
