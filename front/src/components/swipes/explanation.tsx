@@ -1,4 +1,4 @@
-import { CircleCheck, CircleQuestionMark, CircleX } from "lucide-react";
+import { CircleCheck, CircleQuestionMark, CircleX, Timer } from "lucide-react";
 import { cn } from "cn";
 import type { Explanation, Verdict } from "@/lib/swipes/contract";
 
@@ -8,8 +8,19 @@ const verdicts = {
   unknown: { label: "Не знаю", icon: CircleQuestionMark, className: "text-warning-foreground" },
 } satisfies Record<Verdict, unknown>;
 
-export function VerdictLabel({ verdict, className }: { verdict: Verdict; className?: string }) {
-  const { label, icon: Icon, className: tone } = verdicts[verdict];
+/** Вердикт ответа; «Время вышло» — это «Не знаю» по истёкшему лимиту, со своей подписью. */
+export function VerdictLabel({
+  verdict,
+  timedOut = false,
+  className,
+}: {
+  verdict: Verdict;
+  timedOut?: boolean;
+  className?: string;
+}) {
+  const { label, icon: Icon, className: tone } = timedOut
+    ? { ...verdicts.unknown, label: "Время вышло", icon: Timer }
+    : verdicts[verdict];
   return (
     <span className={cn("inline-flex items-center gap-1.5 font-extrabold", tone, className)}>
       <Icon className="size-4" aria-hidden />

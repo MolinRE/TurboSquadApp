@@ -10,7 +10,8 @@ function format(ms: number) {
 }
 
 /**
- * Секундомер ответа по часам экрана (время в журнал пишет сервер). startedAt и stoppedAt —
+ * Секундомер ответа по часам экрана (время в журнал пишет сервер); стоит в шапке карточки,
+ * поэтому фон — цвета приложения. startedAt и stoppedAt —
  * отметки performance.now(); пока отсчёт не начался, показывает 0:00 приглушённо.
  */
 export function Stopwatch({
@@ -36,11 +37,11 @@ export function Stopwatch({
       role="timer"
       aria-label="Время на ответ"
       className={cn(
-        "inline-flex h-8 items-center gap-1.5 rounded-full bg-card px-3 text-sm font-extrabold tabular-nums",
+        "inline-flex h-7 shrink-0 items-center gap-1 rounded-full bg-background px-2.5 text-xs font-extrabold tabular-nums",
         startedAt === null && "text-muted-foreground",
       )}
     >
-      <Timer className="size-4 text-brand" aria-hidden />
+      <Timer className="size-3.5 text-brand" aria-hidden />
       {format(elapsed)}
     </span>
   );

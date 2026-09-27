@@ -1,33 +1,40 @@
 "use client";
 
-import Link from "next/link";
-import { useCallback, useEffect, useEffectEvent, useState } from "react";
-import { ArrowLeft, ArrowRight, ArrowUp, CircleCheck, CircleX } from "lucide-react";
+import { useEffect, useEffectEvent, useState, type ReactNode } from "react";
+import { ArrowLeft, ArrowRight, ArrowUp, Zap } from "lucide-react";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
+import { Countdown } from "@/components/game/countdown";
 import { ScalesPanel } from "@/components/game/scale-meter";
 import { Stopwatch } from "@/components/game/stopwatch";
 import { swipesApi } from "@/lib/swipes/api";
 import type {
   AnswerOutcome,
+  CycleInfo,
   ShiftCard,
-  ShiftProgress,
+  ShiftMode,
   ShiftState,
   SwipeAnswer,
 } from "@/lib/swipes/contract";
+import { DeckProgress } from "./deck-progress";
 import { ExplanationText, SourceLine, VerdictLabel } from "./explanation";
+import { formatSeconds } from "./format";
+import { ModeChoice } from "./mode-choice";
+import { ShiftSummary } from "./shift-summary";
 import { SWIPE_EXIT_MS, SwipeCard } from "./swipe-card";
+import { useSwipeDrag } from "./use-swipe-drag";
 
-/** Пауза после верного ответа: успеть взглянуть на Вопрос и Пояснение. */
+/** Пауза после верного ответа: успеть взглянуть на Вопрос и Пояснение. В Циклах 2–3 её нет. */
 const CORRECT_PAUSE_MS = 2500;
+const GESTURE_HINT_KEY = "turbo-brigada:swipes:gesture-hint-seen";
 
 type Phase =
+  | { kind: "choosing" }
   | { kind: "loading" }
   | { kind: "loadFailed"; message: string }
   /** Карточка на экране: печатается или ждёт ответа. */
   | { kind: "playing" }
-  | { kind: "sending"; answer: SwipeAnswer }
+  | { kind: "sending"; exitTo: SwipeAnswer }
   | { kind: "feedback" }
   /** Просим у сервера следующую карточку. */
   | { kind: "advancing" }
@@ -54,84 +61,93 @@ function messageOf(error: unknown) {
   return error instanceof Error ? error.message : "Что-то пошло не так";
 }
 
-function formatSeconds(ms: number) {
-  return (ms / 1000).toLocaleString("ru-RU", {
-    minimumFractionDigits: 1,
-    maximumFractionDigits: 1,
-  });
+/** Показ жеста — один раз на браузер; если хранилище недоступно, не показываем. */
+function takeGestureHint() {
+  try {
+    if (localStorage.getItem(GESTURE_HINT_KEY)) return false;
+    localStorage.setItem(GESTURE_HINT_KEY, "1");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** В Циклах 2–3 после верного ответа сразу следующая карточка: темп важнее паузы. */
+function skipsPause(shift: ShiftState, outcome: AnswerOutcome) {
+  return outcome.verdict === "correct" && (shift.cycle?.number ?? 0) >= 2;
 }
 
 /**
  * Смена на свайпах. Правила и время считает сервер (сейчас подменный модуль), экран показывает.
- * Формулировка печатается, затем появляются варианты и идёт секундомер. После ответа —
- * Пояснение: после верного следующая карточка приходит сама через паузу, после ошибки
- * и «Не знаю» — по «Понятно».
+ * Сначала выбор Режима. Формулировка печатается, затем появляются варианты и идёт секундомер
+ * или, в Циклах, обратный отсчёт. После ответа — Пояснение: после ошибки, «Не знаю» и
+ * «Время вышло» — по «Понятно», после верного — через паузу (в Циклах 2–3 без неё).
+ * Свайп работает в любой части экрана.
  */
 export function SwipeShift() {
   const [shift, setShift] = useState<ShiftState | null>(null);
-  const [phase, setPhase] = useState<Phase>({ kind: "loading" });
+  const [phase, setPhase] = useState<Phase>({ kind: "choosing" });
   const [last, setLast] = useState<LastAnswer | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [timing, setTiming] = useState<Timing>(notStarted);
   /** Номер показа карточки: одна и та же карточка при Повторе — новый показ. */
   const [turn, setTurn] = useState(0);
 
-  const showCard = useCallback((state: ShiftState) => {
+  const ready = timing.startedAt !== null;
+  const { drag, handlers, playDemo } = useSwipeDrag({
+    enabled: phase.kind === "playing" && ready,
+    onAnswer: answerCard,
+  });
+
+  function showCard(state: ShiftState) {
     setShift(state);
     setTurn((value) => value + 1);
     setTiming(notStarted);
     setPhase({ kind: "playing" });
-  }, []);
+  }
 
-  const loadShift = useCallback(
-    (isActive: () => boolean) => {
-      swipesApi.startShift().then(
-        (state) => {
-          if (isActive()) showCard(state);
-        },
-        (error) => {
-          if (isActive()) setPhase({ kind: "loadFailed", message: messageOf(error) });
-        },
-      );
-    },
-    [showCard],
-  );
-
-  useEffect(() => {
-    let active = true;
-    loadShift(() => active);
-    return () => {
-      active = false;
-    };
-  }, [loadShift]);
-
-  function restart() {
+  function load(request: () => Promise<ShiftState>) {
     setPhase({ kind: "loading" });
     setLast(null);
     setActionError(null);
-    loadShift(() => true);
+    request().then(showCard, (error) => setPhase({ kind: "loadFailed", message: messageOf(error) }));
   }
 
-  const ready = timing.startedAt !== null;
+  function choose(mode: ShiftMode) {
+    load(() => swipesApi.startShift(mode));
+  }
+
+  function nextCycle() {
+    if (shift) load(() => swipesApi.startNextCycle(shift.shiftId));
+  }
+
+  function restart() {
+    setShift(null);
+    setLast(null);
+    setPhase({ kind: "choosing" });
+  }
 
   function startTimer() {
     setTiming({ startedAt: performance.now(), stoppedAt: null });
   }
 
-  async function answerCard(answer: SwipeAnswer) {
+  function onCardReady() {
+    if (takeGestureHint()) playDemo(startTimer);
+    else startTimer();
+  }
+
+  async function submit(exitTo: SwipeAnswer, request: (card: ShiftCard, shiftId: string) => Promise<AnswerOutcome>) {
     if (phase.kind !== "playing" || !ready || !shift?.card) return;
     const card = shift.card;
-    setPhase({ kind: "sending", answer });
+    setPhase({ kind: "sending", exitTo });
     setTiming((value) => ({ ...value, stoppedAt: performance.now() }));
     setActionError(null);
     try {
-      const [outcome] = await Promise.all([
-        swipesApi.answer(shift.shiftId, card.questionId, answer),
-        wait(SWIPE_EXIT_MS),
-      ]);
+      const [outcome] = await Promise.all([request(card, shift.shiftId), wait(SWIPE_EXIT_MS)]);
       setLast({ card, outcome });
       setShift(outcome.shift);
-      setPhase({ kind: "feedback" });
+      if (skipsPause(shift, outcome)) advance(outcome.shift);
+      else setPhase({ kind: "feedback" });
     } catch (error) {
       setActionError(`Ответ не отправлен: ${messageOf(error)}. Попробуйте ещё раз.`);
       setTiming((value) => ({ ...value, stoppedAt: null }));
@@ -139,18 +155,30 @@ export function SwipeShift() {
     }
   }
 
-  function proceed() {
-    if (phase.kind !== "feedback" || !shift) return;
-    if (shift.status !== "running") {
+  function answerCard(answer: SwipeAnswer) {
+    void submit(answer, (card, shiftId) => swipesApi.answer(shiftId, card.questionId, answer));
+  }
+
+  function timeOut() {
+    void submit("unknown", (card, shiftId) => swipesApi.timeOut(shiftId, card.questionId));
+  }
+
+  /** Следующая карточка или итог, если Смена закончилась. */
+  function advance(state: ShiftState) {
+    if (state.status !== "running") {
       setPhase({ kind: "finished" });
       return;
     }
     setPhase({ kind: "advancing" });
     setActionError(null);
-    swipesApi.showNextCard(shift.shiftId).then(showCard, (error) => {
+    swipesApi.showNextCard(state.shiftId).then(showCard, (error) => {
       setActionError(`Следующая карточка не пришла: ${messageOf(error)}. Попробуйте ещё раз.`);
       setPhase({ kind: "feedback" });
     });
+  }
+
+  function proceed() {
+    if (phase.kind === "feedback" && shift) advance(shift);
   }
 
   const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
@@ -158,7 +186,7 @@ export function SwipeShift() {
     const answer = keyAnswers[event.key];
     if (phase.kind === "playing" && answer) {
       event.preventDefault();
-      void answerCard(answer);
+      answerCard(answer);
     } else if (phase.kind === "feedback" && (event.key === "Enter" || event.key === " ")) {
       event.preventDefault();
       proceed();
@@ -170,6 +198,8 @@ export function SwipeShift() {
     window.addEventListener("keydown", listener);
     return () => window.removeEventListener("keydown", listener);
   }, []);
+
+  if (phase.kind === "choosing") return <ModeChoice onChoose={choose} />;
 
   if (phase.kind === "loadFailed") {
     return (
@@ -185,38 +215,59 @@ export function SwipeShift() {
   }
 
   if (phase.kind === "finished") {
-    return <ShiftSummary shift={shift} onRestart={restart} />;
+    return <ShiftSummary shift={shift} onRestart={restart} onNextCycle={nextCycle} />;
   }
 
-  const showingFeedback = phase.kind === "feedback" || phase.kind === "advancing";
+  const showingFeedback = (phase.kind === "feedback" || phase.kind === "advancing") && last;
+  const card = shift.card;
+  const dragEnabled = phase.kind === "playing" && ready;
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-end gap-3">
-        <ShiftProgressBar progress={shift.progress} />
-        <Stopwatch startedAt={timing.startedAt} stoppedAt={timing.stoppedAt} />
-      </div>
+    <div
+      {...handlers}
+      className={cn(
+        "flex flex-1 flex-col gap-3",
+        dragEnabled && "cursor-grab touch-none select-none active:cursor-grabbing",
+      )}
+    >
+      {shift.cycle ? <CycleBadge cycle={shift.cycle} /> : null}
       <ScalesPanel scales={shift.scales} changes={last?.outcome.scaleChanges} />
 
-      {showingFeedback && last ? (
+      {showingFeedback ? (
         <FeedbackPanel
+          shift={shift}
           last={last}
-          finished={shift.status !== "running"}
           busy={phase.kind === "advancing"}
           onContinue={proceed}
         />
-      ) : shift.card ? (
+      ) : card ? (
         <>
-          <SwipeCard
-            key={turn}
-            card={shift.card}
-            exitTo={phase.kind === "sending" ? phase.answer : null}
-            disabled={phase.kind !== "playing" || !ready}
-            onReady={startTimer}
-            onAnswer={answerCard}
-          />
+          <CardStack remaining={shift.progress.total - shift.progress.done}>
+            <SwipeCard
+              key={turn}
+              card={card}
+              drag={drag}
+              exitTo={phase.kind === "sending" ? phase.exitTo : null}
+              onReady={onCardReady}
+              header={
+                <div className="flex items-center gap-3">
+                  <DeckProgress progress={shift.progress} />
+                  {card.timeLimitMs === null ? (
+                    <Stopwatch startedAt={timing.startedAt} stoppedAt={timing.stoppedAt} />
+                  ) : (
+                    <Countdown
+                      limitMs={card.timeLimitMs}
+                      startedAt={timing.startedAt}
+                      stoppedAt={timing.stoppedAt}
+                      onExpire={timeOut}
+                    />
+                  )}
+                </div>
+              }
+            />
+          </CardStack>
           <AnswerButtons
-            card={shift.card}
+            card={card}
             ready={ready}
             disabled={phase.kind !== "playing"}
             onAnswer={answerCard}
@@ -233,16 +284,29 @@ export function SwipeShift() {
   );
 }
 
-function ShiftProgressBar({ progress }: { progress: ShiftProgress }) {
+function CycleBadge({ cycle }: { cycle: CycleInfo }) {
   return (
-    <div className="flex flex-1 flex-col gap-1.5">
-      <div className="flex justify-between text-xs font-bold">
-        <span>Вопросы</span>
-        <span className="tabular-nums">
-          {progress.done} из {progress.total}
-        </span>
-      </div>
-      <Progress value={(progress.done / progress.total) * 100} className="h-1.5" />
+    <p className="flex items-center gap-1.5 text-sm font-bold">
+      <Zap className="size-4 text-brand" aria-hidden />
+      Цикл {cycle.number} из {cycle.timeLimitsMs.length}
+      <span className="font-normal text-muted-foreground">
+        · {cycle.timeLimitsMs[cycle.number - 1] / 1000} с на карточку
+      </span>
+    </p>
+  );
+}
+
+/** Колода: под текущей карточкой видны края следующих, пока они есть. */
+function CardStack({ remaining, children }: { remaining: number; children: ReactNode }) {
+  return (
+    <div className="relative mb-3">
+      {remaining > 2 ? (
+        <div aria-hidden className="absolute inset-x-6 top-4 -bottom-3 rounded-xl bg-card/60" />
+      ) : null}
+      {remaining > 1 ? (
+        <div aria-hidden className="absolute inset-x-3 top-2 -bottom-1.5 rounded-xl bg-card/85 shadow-sm" />
+      ) : null}
+      {children}
     </div>
   );
 }
@@ -303,18 +367,19 @@ function AnswerButtons({
 }
 
 function FeedbackPanel({
+  shift,
   last,
-  finished,
   busy,
   onContinue,
 }: {
+  shift: ShiftState;
   last: LastAnswer;
-  finished: boolean;
   busy: boolean;
   onContinue: () => void;
 }) {
   const { card, outcome } = last;
   const correct = outcome.verdict === "correct";
+  const finished = shift.status !== "running";
   const correctLabel = outcome.correctSide === "right" ? card.rightLabel : card.leftLabel;
   const CorrectArrow = outcome.correctSide === "right" ? ArrowRight : ArrowLeft;
   const continueLater = useEffectEvent(onContinue);
@@ -327,11 +392,14 @@ function FeedbackPanel({
 
   return (
     <section aria-live="polite" className="flex flex-col gap-3 rounded-xl bg-card p-5">
+      <DeckProgress progress={shift.progress} />
       <div className="flex items-center justify-between gap-2">
-        <VerdictLabel verdict={outcome.verdict} className="text-lg" />
-        <span className="text-xs font-bold text-muted-foreground tabular-nums">
-          Ответ за {formatSeconds(outcome.elapsedMs)} с
-        </span>
+        <VerdictLabel verdict={outcome.verdict} timedOut={outcome.timedOut} className="text-lg" />
+        {outcome.timedOut ? null : (
+          <span className="text-xs font-bold text-muted-foreground tabular-nums">
+            Ответ за {formatSeconds(outcome.elapsedMs)} с
+          </span>
+        )}
       </div>
       <p className="text-sm text-muted-foreground">{card.statement}</p>
       {correct ? null : (
@@ -361,52 +429,5 @@ function FeedbackPanel({
         {finished ? "К итогу" : correct ? "Дальше" : "Понятно"}
       </Button>
     </section>
-  );
-}
-
-function ShiftSummary({ shift, onRestart }: { shift: ShiftState; onRestart: () => void }) {
-  const result = shift.result!;
-  const passed = shift.status === "passed";
-  const failedScale = shift.scales.find((scale) => scale.code === result.failedScale);
-
-  return (
-    <div className="flex flex-1 flex-col gap-3">
-      <section className="flex flex-col items-center gap-2 rounded-xl bg-card p-6 text-center">
-        {passed ? (
-          <CircleCheck className="size-10 text-brand" aria-hidden />
-        ) : (
-          <CircleX className="size-10 text-danger" aria-hidden />
-        )}
-        <h1 className="text-2xl font-extrabold tracking-tight">
-          {passed ? "Смена пройдена" : "Срыв смены"}
-        </h1>
-        {failedScale ? (
-          <p className="text-sm text-muted-foreground">
-            Шкала «{failedScale.name}» упала до {failedScale.value}
-          </p>
-        ) : null}
-        <p className="text-sm">
-          Верно с первого раза:{" "}
-          <b className="tabular-nums">
-            {result.firstTryCorrect} из {result.total}
-          </b>
-        </p>
-        {result.averageAnswerMs !== null ? (
-          <p className="text-sm">
-            Среднее время ответа:{" "}
-            <b className="tabular-nums">{formatSeconds(result.averageAnswerMs)} с</b>
-          </p>
-        ) : null}
-      </section>
-      <ScalesPanel scales={shift.scales} />
-      <div className="mt-auto grid gap-2">
-        <Button onClick={onRestart} className="h-12 text-base font-bold">
-          Новая Смена
-        </Button>
-        <Button asChild variant="outline" className="h-12 bg-card text-base font-bold">
-          <Link href="/games">К играм</Link>
-        </Button>
-      </div>
-    </div>
   );
 }
