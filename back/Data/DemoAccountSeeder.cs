@@ -61,7 +61,10 @@ public sealed class DemoAccountSeeder(
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
-    private IReadOnlyList<DemoAccountDefinition> CreateDefinitions() =>
+    /// <summary>Логины демо-аккаунтов: только они входят без пароля через демо-вход.</summary>
+    public static IReadOnlyList<string> Usernames { get; } = CreateDefinitions().Select(account => account.Username).ToList();
+
+    private static IReadOnlyList<DemoAccountDefinition> CreateDefinitions() =>
     [
         new(
             "conductor-star",

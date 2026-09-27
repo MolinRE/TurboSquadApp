@@ -167,6 +167,25 @@ app.MapPost("/api/auth/login", async (
     .WithDescription("Проверяет логин и пароль и возвращает Bearer-токен для защищённых API-методов. Ошибки входа не раскрывают причину отказа.")
     .AllowAnonymous();
 
+app.MapPost("/api/auth/demo-login", async (
+    DemoLoginRequest request,
+    LoginService loginService,
+    IConfiguration configuration,
+    CancellationToken cancellationToken) =>
+{
+    if (!configuration.GetValue("DemoAccounts:LoginEnabled", true)) return Results.NotFound();
+    var result = await loginService.DemoLoginAsync(request, cancellationToken);
+    return result.IsValid ? Results.Ok(result.Response) : Results.Unauthorized();
+})
+    .Accepts<DemoLoginRequest>("application/json")
+    .Produces<TokenResponse>()
+    .Produces(StatusCodes.Status401Unauthorized)
+    .Produces(StatusCodes.Status404NotFound)
+    .WithName("DemoLogin")
+    .WithSummary("Войти в демо-аккаунт без пароля")
+    .WithDescription("Для кнопок «Войти как…» и жюри: выдаёт Bearer-токен демо-аккаунтам conductor-star, conductor-novice и manager-methodologist без пароля. Другие логины и не засеянные аккаунты — 401. Настройка DemoAccounts:LoginEnabled=false выключает метод — 404.")
+    .AllowAnonymous();
+
 app.MapGet("/api/auth/me", (HttpContext context) =>
     Results.Ok(new
     {

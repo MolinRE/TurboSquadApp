@@ -105,23 +105,46 @@ export class ApiError extends Error {
   }
 }
 
-export async function login(username: string, password: string): Promise<TokenResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+const demoLoginErrors: Record<number, string> = {
+  401: "Этого демо-аккаунта нет на сервере: включите засев демо-аккаунтов",
+  404: "Вход без пароля на сервере выключен",
+};
+
+/** Кнопка «Войти как…»: бэкенд выдаёт токен демо-аккаунту без пароля. */
+export async function demoLogin(username: string): Promise<TokenResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/auth/demo-login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify({ username }),
   });
-  if (!response.ok) throw new ApiError("Неверный логин или пароль", response.status);
+  if (!response.ok) {
+    throw new ApiError(demoLoginErrors[response.status] ?? "Не удалось войти", response.status);
+  }
   const result = (await response.json()) as TokenResponse;
-  window.localStorage.setItem("turbo.accessToken", result.accessToken);
+  window.localStorage.setItem(TOKEN_KEY, result.accessToken);
   return result;
 }
 
+/** Выход из аккаунта: токен забывается. */
+export function signOut() {
+  window.localStorage.removeItem(TOKEN_KEY);
+}
+
 const API_BASE_URL = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:5017").replace(/\/$/, "");
+const TOKEN_KEY = "turbo.accessToken";
 
 function token(): string | null {
   if (typeof window === "undefined") return null;
-  return window.localStorage.getItem("turbo.accessToken");
+  return window.localStorage.getItem(TOKEN_KEY);
+}
+
+/** 401 — токена нет или он истёк: забываем его и возвращаемся на «Войти как…». */
+function leaveIfUnauthorized(response: Response) {
+  if (response.status !== 401) return;
+  signOut();
+  // Из модуля API роутера Next нет; полная перезагрузка заодно сбрасывает состояние экрана со старым токеном.
+  // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+  window.location.assign("/login");
 }
 
 async function readPayload(response: Response): Promise<ApiErrorPayload | undefined> {
@@ -143,6 +166,7 @@ async function json<T>(path: string, init: RequestInit = {}): Promise<T> {
     headers: { ...headers(), "Content-Type": "application/json", ...init.headers },
   });
   if (!response.ok) {
+    leaveIfUnauthorized(response);
     const payload = await readPayload(response);
     throw new ApiError(payload?.detail ?? payload?.message ?? "API вернул ошибку", response.status, payload);
   }
@@ -197,6 +221,7 @@ export async function uploadVoice(
   });
   const payload = await readPayload(response);
   if (!response.ok) {
+    leaveIfUnauthorized(response);
     throw new ApiError(payload?.detail ?? payload?.message ?? "Голосовая попытка не прошла", response.status, payload);
   }
   return payload as TripView;
@@ -214,6 +239,7 @@ export async function streamPassengerReply(
     signal,
   });
   if (!response.ok) {
+    leaveIfUnauthorized(response);
     const payload = await readPayload(response);
     throw new ApiError(payload?.detail ?? payload?.message ?? "Реплика пассажира не получена", response.status, payload);
   }
