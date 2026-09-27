@@ -447,15 +447,9 @@ public sealed class TripService(
         var seq = before.Journal.Count;
         foreach (var entry in after.Journal.Skip(before.Journal.Count))
         {
-            var knowledgeDelta = 0;
-            if (entry is Decision decision && before.CurrentStep is { } step &&
-                step.Reactions.Any(reaction => reaction.Competencies?.GetValueOrDefault("knowledge") > 0))
-            {
-                var reaction = decision.TimedOut ? step.Timeout : step.Variants?.Single(v => v.Id == decision.VariantId);
-                var cost = reaction?.Competencies?.GetValueOrDefault("knowledge") ?? 0;
-                knowledgeDelta = await scoring.ApplyAsync(record.UserId, "step", $"{decision.EventId}:{decision.StepId}",
-                    cost > 0, cost, now, cancellationToken);
-            }
+            var knowledgeDelta = entry is Decision decision
+                ? await scoring.ApplyTripDecisionAsync(record.UserId, before, decision, now, cancellationToken)
+                : 0;
             dbContext.TripJournal.Add(JournalRow(record.Id, ++seq, entry, elapsedMs, now, knowledgeDelta));
         }
 

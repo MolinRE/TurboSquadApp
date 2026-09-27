@@ -132,7 +132,7 @@ public sealed class SwipeShiftService(AppDbContext dbContext, TimeProvider clock
         CancellationToken cancellationToken)
     {
         var settled = play.Settle(answer, timedOut, elapsedMs);
-        var knowledgeDelta = await scoring.ApplyAsync(record.UserId, "question", settled.Question.Id,
+        var knowledgeDelta = await scoring.ApplyAsync(record.UserId, KnowledgeUnit.Question(settled.Question.Id),
             settled.Verdict == Verdict.Correct, settled.Question.KnowledgeCost, now, cancellationToken);
         dbContext.SwipeAnswers.Add(new SwipeAnswerRecord
         {

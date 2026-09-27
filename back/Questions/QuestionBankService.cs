@@ -89,6 +89,7 @@ public sealed class QuestionBankService(AppDbContext db)
     public async Task<IResult> CreateAsync(QuestionEditorInput input, CancellationToken cancellationToken)
     {
         if (!KnownType(input.Type)) return InvalidType();
+        if (InvalidKnowledgeCost(input.KnowledgeCost) is { } invalidCost) return invalidCost;
         var record = new QuestionRecord { Id = $"q-{Guid.NewGuid():N}", Status = QuestionStatuses.Draft };
         Apply(record, input);
         db.Questions.Add(record);
@@ -101,6 +102,7 @@ public sealed class QuestionBankService(AppDbContext db)
         var record = await db.Questions.SingleOrDefaultAsync(q => q.Id == id, cancellationToken);
         if (record is null) return Results.NotFound();
         if (!KnownType(input.Type)) return InvalidType();
+        if (InvalidKnowledgeCost(input.KnowledgeCost) is { } invalidCost) return invalidCost;
         if (record.Type != input.Type && await UsedInSwipeHistoryAsync(id, cancellationToken))
             return Results.Conflict(new { message = "Нельзя изменить тип Вопроса, который есть в Смене" });
 
@@ -191,4 +193,7 @@ public sealed class QuestionBankService(AppDbContext db)
 
     private static IResult InvalidType() => Results.BadRequest(new QuestionValidationReport(
         [new("type", "Неизвестный тип Вопроса")]));
+
+    private static IResult? InvalidKnowledgeCost(int cost) => cost > 0 ? null : Results.BadRequest(
+        new QuestionValidationReport([new("knowledgeCost", "Стоимость по Знанию должна быть положительной")]));
 }

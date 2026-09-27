@@ -10,6 +10,36 @@ namespace TurboSquadApp.Tests.Swipes;
 public class KnowledgeScoreApiTests
 {
     [Fact]
+    public async Task Correct_repeat_in_the_same_shift_restores_mastery()
+    {
+        using var factory = new TripApiFactory();
+        await factory.Database(async db =>
+        {
+            var questions = await db.Questions.OrderBy(q => q.Id).ToListAsync();
+            foreach (var item in questions.Skip(4)) item.Status = "draft";
+            await db.SaveChangesAsync();
+            return true;
+        });
+        var shift = await SwipeApiTests.ShiftClient.Start(factory, "calm");
+        var firstQuestion = shift.CardId;
+        await shift.Answer(SwipeApiTests.Wrong(shift.Card!));
+        Assert.Equal(0, await Points());
+        for (var i = 0; i < 3; i++)
+        {
+            await shift.NextCard();
+            await shift.Answer(SwipeApiTests.Correct(shift.Card!));
+        }
+        Assert.Equal(30, await Points());
+        await shift.NextCard();
+        Assert.Equal(firstQuestion, shift.CardId);
+        Assert.True((bool)shift.Card!["isRepeat"]!);
+        await shift.Answer(SwipeApiTests.Correct(shift.Card!));
+        Assert.Equal(40, await Points());
+
+        async Task<int> Points() => (int)(await shift.Http.GetFromJsonAsync<JsonNode>("/api/profile"))!["knowledgePoints"]!;
+    }
+
+    [Fact]
     public async Task Earned_rank_remains_after_knowledge_points_fall()
     {
         using var factory = new TripApiFactory();
@@ -64,6 +94,8 @@ public class KnowledgeScoreApiTests
             baseFrequency = 1, timeLimitSec = 10, knowledgeCost = cost,
         };
 
+        var invalidDraft = await http.PutAsJsonAsync($"/api/cms/questions/{id}", Input(0));
+        Assert.Equal(HttpStatusCode.BadRequest, invalidDraft.StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await http.PutAsJsonAsync($"/api/cms/questions/{id}", Input(17))).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await http.PostAsync($"/api/cms/questions/{id}/publish", null)).StatusCode);
         var saved = await http.GetFromJsonAsync<JsonNode>($"/api/cms/questions/{id}");
