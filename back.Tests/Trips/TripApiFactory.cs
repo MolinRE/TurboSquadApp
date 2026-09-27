@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 using Microsoft.AspNetCore.Hosting;
@@ -113,15 +114,26 @@ public sealed class FakeEventGenerationClient : IEventGenerationClient
     }
 }
 
-/// <summary>Детерминированный провайдер для API-тестов: первый байт аудио задаёт choice.</summary>
-public sealed class FakeVoicePipeline : IVoicePipeline
+/// <summary>
+/// Детерминированный провайдер для API-тестов: первый байт аудио задаёт choice,
+/// «s» — тот же ответ «a», но обработка занимает 5 с по часам теста.
+/// </summary>
+public sealed class FakeVoicePipeline(TimeProvider clock) : IVoicePipeline
 {
+    public ConcurrentQueue<VoicePipelineRequest> Requests { get; } = new();
+
     public async Task<VoicePipelineResult> ProcessAsync(
         VoicePipelineRequest request, Stream audio, string fileName, string? contentType,
         CancellationToken cancellationToken)
     {
+        Requests.Enqueue(request);
         var buffer = new byte[1];
         var marker = await audio.ReadAsync(buffer, cancellationToken) == 0 ? -1 : buffer[0];
+        if (marker == 's')
+        {
+            ((TestClock)clock).Advance(TimeSpan.FromSeconds(5));
+            marker = 'a';
+        }
         return marker switch
         {
             (int)'x' => new VoicePipelineResult("Невнятный ответ", "a", 0.2, 8, false, "LowConfidence", "Низкая уверенность", "fake-laya"),
@@ -144,11 +156,13 @@ public sealed class FakeLlmClient : ILlmClient
     public bool Fail { get; set; }
     public bool Block { get; set; }
     public int Calls { get; private set; }
+    public ConcurrentQueue<LlmRequest> Requests { get; } = new();
 
     public async IAsyncEnumerable<LlmToken> StreamAsync(
         LlmRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         Calls++;
+        Requests.Enqueue(request);
         await Task.CompletedTask;
         if (Block)
         {

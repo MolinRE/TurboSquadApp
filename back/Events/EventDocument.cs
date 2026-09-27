@@ -69,6 +69,16 @@ public sealed record Variant
     public string Id { get; init; } = "";
     public string Text { get; init; } = "";
 
+    /// <summary>
+    /// Для голосового Шага: намерение проводника одной фразой («Проводник …»), с которым Laya
+    /// сравнивает ответ. Без него Laya сравнивает ответ с Text (ADR-0003).
+    /// </summary>
+    public string? LayaCriterion { get; init; }
+
+    /// <summary>С чем Laya сравнивает ответ проводника.</summary>
+    [JsonIgnore]
+    public string LayaText => string.IsNullOrWhiteSpace(LayaCriterion) ? Text : LayaCriterion;
+
     /// <summary>Условия показа Варианта.</summary>
     public IReadOnlyList<Condition>? Conditions { get; init; }
 

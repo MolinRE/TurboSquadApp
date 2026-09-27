@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
+using Microsoft.Extensions.Configuration;
 using TurboSquadApp.Voice;
 
 namespace TurboSquadApp.Tests.Voice;
@@ -35,6 +36,25 @@ public class VoiceClientTests
     }
 
     [Fact]
+    public void Default_laya_confidence_threshold_is_0_55()
+    {
+        Assert.Equal(0.55, new VoiceOptions().MinimumConfidence);
+        Assert.Equal(0.55, VoiceOptions.FromConfiguration(new ConfigurationBuilder().Build()).MinimumConfidence);
+    }
+
+    [Theory]
+    [InlineData(100, "доброжелательно")]
+    [InlineData(70, "доброжелательно")]
+    [InlineData(69, "раздражение")]
+    [InlineData(40, "раздражение")]
+    [InlineData(39, "резко")]
+    [InlineData(0, "резко")]
+    public void Passenger_tone_follows_loyalty(int loyalty, string expected)
+    {
+        Assert.Contains(expected, PassengerTone.For(loyalty));
+    }
+
+    [Fact]
     public async Task Laya_client_sends_structured_state_and_reads_choice_confidence()
     {
         HttpRequestMessage? captured = null;
@@ -43,7 +63,7 @@ public class VoiceClientTests
         {
             captured = request;
             capturedBody = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
-            return Json(HttpStatusCode.OK, "{\"answers\":{\"choice\":{\"choice\":\"a\",\"answer_confidence\":0.91},\"score\":{\"score\":8.5,\"answer_confidence\":0.82},\"acknowledge\":{\"noul\":0.91},\"rule\":{\"noul\":0.72},\"solution\":{\"noul\":0.63},\"reassure\":{\"noul\":0.41},\"safety\":{\"noul\":0.08,\"answer_confidence\":0.92}}}");
+            return Json(HttpStatusCode.OK, "{\"answers\":{\"choice\":{\"choice\":\"a\",\"answer_confidence\":0.91},\"score\":{\"score\":1.5,\"answer_confidence\":0.82},\"acknowledge\":{\"noul\":0.91},\"safety\":{\"noul\":0.08,\"answer_confidence\":0.92}}}");
         });
         using var http = new HttpClient(handler);
         var client = new LayaClient(http, new VoiceOptions { LayaToken = "laya-test", LayaEndpoint = "http://laya.test/v1/systemone" });
@@ -51,11 +71,11 @@ public class VoiceClientTests
         var result = await client.DecideAsync(
             "Пассажир шумит", "Спокойно обозначить правило", "Прошу соблюдать спокойствие",
             [new VoiceQuestion("a", "Спокойно подойти"), new VoiceQuestion("b", "Не подходить")],
-            CancellationToken.None);
+            ["acknowledge"], CancellationToken.None);
 
         Assert.Equal(("a", 0.91, null), (result.Choice, result.Confidence, result.RequestId));
         Assert.Null(result.ErrorCode);
-        Assert.Equal(0.85, result.Assessment!.Score!.Value, 3);
+        Assert.Equal(0.75, result.Assessment!.Score!.Value, 3);
         Assert.Equal(0.82, result.Assessment.ScoreConfidence!.Value, 3);
         Assert.Equal(0.91, result.Assessment.RoleStages["acknowledge"], 3);
         Assert.Equal(0.08, result.Assessment.SafetyViolation!.Value, 3);
@@ -67,6 +87,30 @@ public class VoiceClientTests
         Assert.Equal("score", json.GetProperty("questions").GetProperty("score").GetProperty("type").GetString());
         Assert.Equal("noul", json.GetProperty("questions").GetProperty("safety").GetProperty("type").GetString());
         Assert.Equal("noul", json.GetProperty("questions").GetProperty("acknowledge").GetProperty("type").GetString());
+        Assert.Equal(3, json.GetProperty("questions").GetProperty("score").GetProperty("criteria").GetArrayLength());
+        Assert.Equal(["choice", "score", "safety", "acknowledge"],
+            json.GetProperty("questions").EnumerateObject().Select(question => question.Name));
+    }
+
+    [Fact]
+    public async Task Laya_client_skips_role_stage_questions_when_step_has_none()
+    {
+        string? capturedBody = null;
+        var handler = new CapturingHandler(request =>
+        {
+            capturedBody = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return Json(HttpStatusCode.OK, "{\"answers\":{\"choice\":{\"choice\":\"a\",\"answer_confidence\":0.9},\"score\":{\"score\":2},\"safety\":{\"noul\":0.1}}}");
+        });
+        using var http = new HttpClient(handler);
+        var laya = new LayaClient(http, new VoiceOptions { LayaToken = "laya-test", LayaEndpoint = "http://laya.test/v1/systemone" });
+
+        var result = await laya.DecideAsync("Ситуация", null, "Ответ", [new VoiceQuestion("a", "Критерий")], [], CancellationToken.None);
+
+        Assert.Null(result.ErrorCode);
+        Assert.Empty(result.Assessment!.RoleStages);
+        Assert.Equal(1.0, result.Assessment.Score!.Value, 3);
+        Assert.Equal(["choice", "score", "safety"],
+            JsonDocument.Parse(capturedBody!).RootElement.GetProperty("questions").EnumerateObject().Select(question => question.Name));
     }
 
     [Fact]
@@ -81,7 +125,7 @@ public class VoiceClientTests
         Assert.Equal("SttInvalidResponse", sttResult.ErrorCode);
 
         var laya = new LayaClient(http, new VoiceOptions { LayaToken = "laya-test", LayaEndpoint = "http://laya.test/v1/systemone" });
-        var layaResult = await laya.DecideAsync("Ситуация", null, "Ответ", [new VoiceQuestion("a", "Критерий")], CancellationToken.None);
+        var layaResult = await laya.DecideAsync("Ситуация", null, "Ответ", [new VoiceQuestion("a", "Критерий")], [], CancellationToken.None);
         Assert.Equal("LayaInvalidResponse", layaResult.ErrorCode);
     }
 
@@ -89,14 +133,26 @@ public class VoiceClientTests
     public async Task Laya_rejects_incomplete_role_stage_instead_of_storing_zero()
     {
         var handler = new CapturingHandler(_ => Json(HttpStatusCode.OK,
-            "{\"answers\":{\"choice\":{\"choice\":\"a\",\"confidence\":0.9},\"score\":{\"score\":8},\"safety\":{\"noul\":0.1},\"acknowledge\":{\"noul\":0.8},\"rule\":{\"noul\":0.7},\"solution\":{},\"reassure\":{\"noul\":0.6}}}"));
+            "{\"answers\":{\"choice\":{\"choice\":\"a\",\"confidence\":0.9},\"score\":{\"score\":2},\"safety\":{\"noul\":0.1},\"rule\":{\"noul\":0.7},\"solution\":{}}}"));
         using var http = new HttpClient(handler);
         var laya = new LayaClient(http, new VoiceOptions { LayaToken = "laya-test", LayaEndpoint = "http://laya.test/v1/systemone" });
 
-        var result = await laya.DecideAsync("Ситуация", null, "Ответ", [new VoiceQuestion("a", "Критерий")], CancellationToken.None);
+        var result = await laya.DecideAsync("Ситуация", null, "Ответ", [new VoiceQuestion("a", "Критерий")], ["rule", "solution"], CancellationToken.None);
 
         Assert.Equal("LayaInvalidResponse", result.ErrorCode);
         Assert.Null(result.Assessment);
+    }
+
+    [Fact]
+    public void Passenger_reply_model_is_configured_apart_from_question_generation_model()
+    {
+        var defaults = VoiceOptions.FromConfiguration(new ConfigurationBuilder().Build());
+        Assert.Equal(("qwen/qwen3-next-80b-a3b-instruct", "qwen/qwen3.6-35b-a3b"), (defaults.PassengerReplyModel, defaults.LlmModel));
+
+        var configured = VoiceOptions.FromConfiguration(new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["Voice:PassengerReplyModel"] = "other/model" })
+            .Build());
+        Assert.Equal("other/model", configured.PassengerReplyModel);
     }
 
     [Fact]
@@ -128,7 +184,7 @@ public class VoiceClientTests
         Assert.Equal("Добрый день. Прошу пройти.", string.Concat(tokens.Select(token => token.Text)));
         Assert.NotNull(captured);
         var json = JsonDocument.Parse(capturedBody!).RootElement;
-        Assert.Equal("qwen/qwen3.6-35b-a3b", json.GetProperty("model").GetString());
+        Assert.Equal("qwen/qwen3-next-80b-a3b-instruct", json.GetProperty("model").GetString());
         Assert.True(json.GetProperty("stream").GetBoolean());
         Assert.Equal("low", json.GetProperty("reasoning").GetProperty("effort").GetString());
         Assert.Equal("Bearer", captured!.Headers.Authorization!.Scheme);

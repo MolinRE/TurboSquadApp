@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using TurboSquadApp.Data;
@@ -11,9 +12,11 @@ using TurboSquadApp.Data;
 namespace TurboSquadApp.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260927171701_AddBlitzSessions")]
+    partial class AddBlitzSessions
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -21,27 +24,6 @@ namespace TurboSquadApp.Data.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
-
-            modelBuilder.Entity("TurboSquadApp.Data.AchievementAwardRecord", b =>
-                {
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("user_id");
-
-                    b.Property<string>("AchievementId")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasColumnName("achievement_id");
-
-                    b.Property<DateTimeOffset>("EarnedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("earned_at");
-
-                    b.HasKey("UserId", "AchievementId")
-                        .HasName("pk_achievement_awards");
-
-                    b.ToTable("achievement_awards", (string)null);
-                });
 
             modelBuilder.Entity("TurboSquadApp.Data.AppUser", b =>
                 {
@@ -1005,16 +987,6 @@ namespace TurboSquadApp.Data.Migrations
                         .HasName("pk_trip_settings");
 
                     b.ToTable("trip_settings", (string)null);
-                });
-
-            modelBuilder.Entity("TurboSquadApp.Data.AchievementAwardRecord", b =>
-                {
-                    b.HasOne("TurboSquadApp.Data.AppUser", null)
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_achievement_awards_users_user_id");
                 });
 
             modelBuilder.Entity("TurboSquadApp.Data.AppUser", b =>

@@ -37,8 +37,8 @@ public static class TripEndpoints
 
         trips.MapPost("/{id:guid}/voice", async (
                 Guid id, [FromForm] string eventId, [FromForm] string stepId, [FromForm] string attemptId, IFormFile audio,
-                HttpContext http, TripService service, CancellationToken ct) =>
-                await service.VoiceAsync(UserId(http), id, eventId, stepId, attemptId, audio, ct))
+                [FromForm] int? recordingMs, HttpContext http, TripService service, CancellationToken ct) =>
+                await service.VoiceAsync(UserId(http), id, eventId, stepId, attemptId, audio, recordingMs, ct))
             .Accepts<VoiceStepRequest>("multipart/form-data")
             .Produces<TripView>()
             .ProducesProblem(StatusCodes.Status409Conflict)
@@ -46,7 +46,7 @@ public static class TripEndpoints
             .Produces(StatusCodes.Status404NotFound)
             .WithName("AnswerVoiceStep")
             .WithSummary("Ответить голосом")
-            .WithDescription("Принимает готовый аудиофрагмент голосового Шага с idempotency attemptId, распознаёт его через GigaAM-v3, получает полный вердикт Laya и возвращает pending-реакцию до завершения реплики пассажира. Аудио не сохраняется.")
+            .WithDescription("Принимает готовый аудиофрагмент голосового Шага с idempotency attemptId, распознаёт его через GigaAM-v3, получает полный вердикт Laya и возвращает pending-реакцию до завершения реплики пассажира. Аудио не сохраняется. recordingMs — длительность записи по часам клиента: таймер голосового Шага считает время до начала ответа, допуск на загрузку 2 с.")
             .DisableAntiforgery();
 
         trips.MapGet("/{id:guid}/voice/{attemptId}/reply", async (
@@ -102,7 +102,7 @@ public sealed record StartTripRequest(string ServiceClass);
 
 public sealed record ChooseVariantRequest(string EventId, string StepId, string VariantId);
 
-public sealed record VoiceStepRequest(string EventId, string StepId, string AttemptId, IFormFile Audio);
+public sealed record VoiceStepRequest(string EventId, string StepId, string AttemptId, IFormFile Audio, int? RecordingMs);
 
 public sealed record TimeOutRequest(string EventId, string StepId);
 

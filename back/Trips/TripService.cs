@@ -7,6 +7,7 @@ using TurboSquadApp.Data;
 using TurboSquadApp.Events;
 using TurboSquadApp.Voice;
 using TurboSquadApp.Scoring;
+using TurboSquadApp.Achievements;
 
 namespace TurboSquadApp.Trips;
 
@@ -17,10 +18,17 @@ namespace TurboSquadApp.Trips;
 /// </summary>
 public sealed class TripService(
     AppDbContext dbContext, TimeProvider clock, IVoicePipeline voicePipeline, ILlmClient llmClient, VoiceOptions voiceOptions,
-    KnowledgeScoringService scoring)
+    KnowledgeScoringService scoring, AchievementService achievements)
 {
     /// <summary>Допуск на задержку сети: ответ позже таймера больше чем на него засчитывается как таймаут.</summary>
     public static readonly TimeSpan TimerTolerance = TimeSpan.FromSeconds(1);
+
+    /// <summary>
+    /// Таймер голосового Шага — время на то, чтобы начать отвечать (PRD §6). Начало ответа —
+    /// момент прихода аудио минус длительность записи, которую сообщает клиент; допуск покрывает загрузку.
+    /// </summary>
+    public static readonly TimeSpan VoiceStartTolerance = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan MaxRecording = TimeSpan.FromSeconds(60);
 
     private static readonly JsonSerializerOptions SnapshotJson = JsonSerializerOptions.Web;
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> InMemoryReplyClaims = new();
@@ -83,13 +91,16 @@ public sealed class TripService(
 
         await AppendToJournalAsync(record, state, result.State, now, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await achievements.EvaluateAsync(record.UserId, cancellationToken);
         return Results.Ok(View(record, result.State));
     }
 
     public async Task<IResult> VoiceAsync(
-        Guid userId, Guid tripId, string eventId, string stepId, string attemptId, IFormFile audio,
+        Guid userId, Guid tripId, string eventId, string stepId, string attemptId, IFormFile audio, int? recordingMs,
         CancellationToken cancellationToken)
     {
+        var answerStartedAt = clock.GetUtcNow()
+            - TimeSpan.FromMilliseconds(Math.Clamp(recordingMs ?? 0, 0, (int)MaxRecording.TotalMilliseconds));
         if (await LoadAsync(userId, tripId, cancellationToken) is not { } trip) return Results.NotFound();
         var (record, state) = trip;
         if (string.IsNullOrWhiteSpace(attemptId))
@@ -114,17 +125,21 @@ public sealed class TripService(
 
         var currentEvent = state.CurrentEvent!;
         var currentStep = state.CurrentStep!;
-        var questions = currentStep.Variants!
+        var available = currentStep.Variants!
             .Where(variant => state.Choices.Single(choice => choice.Variant.Id == variant.Id).Available)
-            .Select(variant => new VoiceQuestion(variant.Id, variant.Text))
             .ToList();
+        var questions = available.Select(variant => new VoiceQuestion(variant.Id, variant.LayaText)).ToList();
+        var expectedStages = (currentStep.RequiredRoleStages ?? [])
+            .Concat(available.SelectMany(variant => variant.RoleStages ?? []))
+            .ToHashSet();
+        var roleStages = LayaAssessment.RoleStageCodes.Where(expectedStages.Contains).ToList();
         VoicePipelineResult pipeline;
         await using (var stream = audio.OpenReadStream())
         {
             pipeline = await voicePipeline.ProcessAsync(
                 new VoicePipelineRequest(
                     currentEvent.Id, currentEvent.Version, currentStep.Id, currentStep.Situation,
-                    currentStep.Brief, questions),
+                    currentStep.Brief, questions, roleStages),
                 stream, audio.FileName, audio.ContentType, cancellationToken);
         }
 
@@ -139,13 +154,14 @@ public sealed class TripService(
         var afterAttempt = attemptResult.State;
         var now = clock.GetUtcNow();
         var expiresAt = ExpiresAt(record, state);
-        if (expiresAt is { } expires && now > expires + TimerTolerance)
+        if (expiresAt is { } expires && answerStartedAt > expires + VoiceStartTolerance)
         {
             var timedOutAttempt = attempt with { ErrorCode = "VoiceDeadlineExceeded" };
             var timedOutState = TripEngine.Reduce(state, new RecordVoiceAttempt(timedOutAttempt)).State;
             var timeoutResult = TripEngine.Reduce(timedOutState, new TimeOut());
             await AppendToJournalAsync(record, state, timeoutResult.State, now, cancellationToken);
             await dbContext.SaveChangesAsync(cancellationToken);
+            await achievements.EvaluateAsync(record.UserId, cancellationToken);
             return Results.Ok(View(record, timeoutResult.State, VoiceView(timedOutAttempt)));
         }
 
@@ -153,12 +169,13 @@ public sealed class TripService(
         {
             await AppendToJournalAsync(record, state, afterAttempt, now, cancellationToken);
             await dbContext.SaveChangesAsync(cancellationToken);
+            var failedView = VoiceView(attempt, pending: NeedsClarification(attempt));
             return Results.UnprocessableEntity(new
             {
                 reason = pipeline.ErrorCode ?? "VoiceAttemptFailed",
                 message = pipeline.ErrorMessage ?? "Голосовая попытка не прошла",
-                attempt = VoiceView(attempt),
-                trip = View(record, afterAttempt)
+                attempt = failedView,
+                trip = View(record, afterAttempt, failedView)
             });
         }
 
@@ -202,9 +219,14 @@ public sealed class TripService(
             await WriteSseAsync(response, "error", new { reason = attempt.ReplyError, message = "Реплика пассажира не сгенерирована", trip = View(record, state, VoiceView(attempt)) }, cancellationToken);
             return;
         }
-        if (attempt.PassengerReply is not null && attempt.Applied)
+        if (attempt.PassengerReply is not null)
         {
             await WriteSseAsync(response, "done", new { reply = attempt.PassengerReply, trip = View(record, state, VoiceView(attempt)) }, cancellationToken);
+            return;
+        }
+        if (NeedsClarification(attempt))
+        {
+            await StreamClarificationAsync(record, state, attempt, response, cancellationToken);
             return;
         }
         if (!IsPending(attempt))
@@ -232,39 +254,25 @@ public sealed class TripService(
             return;
         }
 
-        var reply = new System.Text.StringBuilder();
-        string? requestId = null;
         var committed = false;
         var llmTimer = Stopwatch.StartNew();
         try
         {
-            await WriteSseAsync(response, "started", new { attemptId }, cancellationToken);
-            await foreach (var token in llmClient.StreamAsync(context.ToLlmRequest(), cancellationToken))
-            {
-                requestId ??= token.RequestId;
-                reply.Append(token.Text);
-                await WriteSseAsync(response, "token", new { text = token.Text }, cancellationToken);
-            }
-
-            var deadline = ExpiresAt(record, state);
-            if (deadline is { } expires && clock.GetUtcNow() > expires + TimerTolerance)
-            {
-                await SaveReplyAsync(record.Id, attemptId, null, "VoiceDeadlineExceeded", (int)llmTimer.ElapsedMilliseconds);
-                await WriteSseAsync(response, "error", new { reason = "VoiceDeadlineExceeded", message = "Время голосового Шага истекло до завершения реплики" }, CancellationToken.None);
-                return;
-            }
+            // Ответ уже принят вовремя: медленная генерация реплики его не отменяет.
+            var (reply, requestId) = await StreamTokensAsync(response, attemptId, context.ToLlmRequest(), cancellationToken);
 
             var row = await dbContext.TripJournal.SingleAsync(
                 item => item.TripId == record.Id && item.Kind == TripJournalKinds.VoiceAttempt && item.VoiceAttemptId == attemptId,
                 CancellationToken.None);
             row.VoiceApplied = true;
-            row.VoicePassengerReply = reply.ToString();
+            row.VoicePassengerReply = reply;
             row.VoiceLlmLatencyMs = (int)llmTimer.ElapsedMilliseconds;
             await AppendToJournalAsync(record, state, preview.State, clock.GetUtcNow(), CancellationToken.None);
             await dbContext.SaveChangesAsync(CancellationToken.None);
+            await achievements.EvaluateAsync(record.UserId, CancellationToken.None);
             committed = true;
-            var appliedAttempt = attempt with { Applied = true, PassengerReply = reply.ToString(), LlmLatencyMs = row.VoiceLlmLatencyMs };
-            await WriteSseAsync(response, "done", new { reply = reply.ToString(), requestId, trip = View(record, preview.State, VoiceView(appliedAttempt)) }, cancellationToken);
+            var appliedAttempt = attempt with { Applied = true, PassengerReply = reply, LlmLatencyMs = row.VoiceLlmLatencyMs };
+            await WriteSseAsync(response, "done", new { reply, requestId, trip = View(record, preview.State, VoiceView(appliedAttempt)) }, cancellationToken);
         }
         catch (LlmProviderException ex)
         {
@@ -279,6 +287,58 @@ public sealed class TripService(
         {
             if (!committed) await SaveReplyAsync(record.Id, attemptId, null, "LlmClientDisconnected", (int)llmTimer.ElapsedMilliseconds);
         }
+    }
+
+    /// <summary>
+    /// Уточнение пассажира после попытки с низкой уверенностью Laya: Вариант не применяется,
+    /// реплика сохраняется в попытке, проводник отвечает снова на том же Шаге.
+    /// </summary>
+    private async Task StreamClarificationAsync(
+        TripRecord record, TripState state, VoiceAttempt attempt, HttpResponse response, CancellationToken cancellationToken)
+    {
+        if (!await TryClaimReplyAsync(record.Id, attempt.AttemptId))
+        {
+            await WriteSseAsync(response, "error", new { reason = "VoiceReplyPending", message = "Реплика уже генерируется другим подключением" }, cancellationToken);
+            return;
+        }
+
+        var committed = false;
+        var llmTimer = Stopwatch.StartNew();
+        try
+        {
+            var request = PassengerReplyContext.From(state, attempt).ToClarificationRequest();
+            var (reply, requestId) = await StreamTokensAsync(response, attempt.AttemptId, request, cancellationToken);
+            var latency = (int)llmTimer.ElapsedMilliseconds;
+            record.StepStartedAt = clock.GetUtcNow();   // пассажир задал новый вопрос: время на ответ заново
+            await SaveReplyAsync(record.Id, attempt.AttemptId, reply, null, latency);
+            committed = true;
+            var answered = attempt with { PassengerReply = reply, LlmLatencyMs = latency };
+            await WriteSseAsync(response, "done", new { reply, requestId, trip = View(record, state, VoiceView(answered)) }, cancellationToken);
+        }
+        catch (LlmProviderException ex)
+        {
+            await SaveReplyAsync(record.Id, attempt.AttemptId, null, ex.Code, (int)llmTimer.ElapsedMilliseconds);
+            await WriteSseAsync(response, "error", new { reason = ex.Code, message = ex.Message, trip = View(record, state, VoiceView(attempt with { ReplyError = ex.Code })) }, CancellationToken.None);
+        }
+        catch (Exception ex) when (ex is IOException || (ex is OperationCanceledException && cancellationToken.IsCancellationRequested))
+        {
+            if (!committed) await SaveReplyAsync(record.Id, attempt.AttemptId, null, "LlmClientDisconnected", (int)llmTimer.ElapsedMilliseconds);
+        }
+    }
+
+    private async Task<(string Reply, string? RequestId)> StreamTokensAsync(
+        HttpResponse response, string attemptId, LlmRequest request, CancellationToken cancellationToken)
+    {
+        await WriteSseAsync(response, "started", new { attemptId }, cancellationToken);
+        var reply = new System.Text.StringBuilder();
+        string? requestId = null;
+        await foreach (var token in llmClient.StreamAsync(request, cancellationToken))
+        {
+            requestId ??= token.RequestId;
+            reply.Append(token.Text);
+            await WriteSseAsync(response, "token", new { text = token.Text }, cancellationToken);
+        }
+        return (reply.ToString(), requestId);
     }
 
     public async Task<IResult> DebriefAsync(Guid userId, Guid tripId, CancellationToken cancellationToken)
@@ -318,8 +378,14 @@ public sealed class TripService(
     private static bool IsPending(VoiceAttempt attempt) =>
         !attempt.Applied && attempt.Choice is not null && attempt.ErrorCode is null && attempt.ReplyError is null;
 
+    /// <summary>Laya назвала Вариант, но ниже порога: ждём уточнения пассажира.</summary>
+    private static bool NeedsClarification(VoiceAttempt attempt) =>
+        !attempt.Applied && attempt.ErrorCode == "LowConfidence" && attempt.Choice is not null
+        && attempt.PassengerReply is null && attempt.ReplyError is null;
+
     private static TripView VoiceResponse(TripRecord record, TripState state, VoiceAttempt attempt)
     {
+        if (NeedsClarification(attempt)) return View(record, state, VoiceView(attempt, pending: true));
         if (!IsPending(attempt)) return View(record, state, VoiceView(attempt));
         var preview = TripEngine.Reduce(state, new ChooseVariant(attempt.Choice!));
         return preview.Rejection is null

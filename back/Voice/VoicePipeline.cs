@@ -15,11 +15,18 @@ public sealed class VoiceOptions
     public string LayaEndpoint { get; init; } = "http://176.108.247.22:8000/v1/systemone";
     public string LayaToken { get; init; } = string.Empty;
     public string LayaModel { get; init; } = "multilingual";
+    /// <summary>Модель генерации Вопросов в CMS.</summary>
     public string LlmModel { get; init; } = "qwen/qwen3.6-35b-a3b";
+
+    /// <summary>
+    /// Модель реплики пассажира: открытая (Apache 2.0) и без рассуждений. qwen3.6-35b-a3b тратит
+    /// весь max_tokens на рассуждения и возвращает пустой текст, отключить их у polza.ai нельзя.
+    /// </summary>
+    public string PassengerReplyModel { get; init; } = "qwen/qwen3-next-80b-a3b-instruct";
     public string LlmReasoningEffort { get; init; } = "low";
     public int LlmMaxTokens { get; init; } = 256;
     public TimeSpan LlmTimeout { get; init; } = TimeSpan.FromSeconds(15);
-    public double MinimumConfidence { get; init; } = 0.7;
+    public double MinimumConfidence { get; init; } = 0.55;
     public long MaxAudioBytes { get; init; } = 10 * 1024 * 1024;
 
     public static VoiceOptions FromConfiguration(IConfiguration configuration) => new()
@@ -36,10 +43,11 @@ public sealed class VoiceOptions
             ?? string.Empty,
         LayaModel = configuration["Voice:LayaModel"] ?? "multilingual",
         LlmModel = configuration["Voice:LlmModel"] ?? "qwen/qwen3.6-35b-a3b",
+        PassengerReplyModel = configuration["Voice:PassengerReplyModel"] ?? "qwen/qwen3-next-80b-a3b-instruct",
         LlmReasoningEffort = configuration["Voice:LlmReasoningEffort"] ?? "low",
         LlmMaxTokens = configuration.GetValue("Voice:LlmMaxTokens", 256),
         LlmTimeout = TimeSpan.FromSeconds(configuration.GetValue("Voice:LlmTimeoutSeconds", 15)),
-        MinimumConfidence = configuration.GetValue("Voice:MinimumConfidence", 0.7),
+        MinimumConfidence = configuration.GetValue("Voice:MinimumConfidence", 0.55),
         MaxAudioBytes = configuration.GetValue("Voice:MaxAudioBytes", 10 * 1024 * 1024L),
     };
 
@@ -75,9 +83,10 @@ public sealed class VoiceOptions
 
 public sealed record VoiceQuestion(string Id, string Text);
 
+/// <param name="RoleStages">Этапы Ролевой модели, которые Laya оценивает на этом Шаге.</param>
 public sealed record VoicePipelineRequest(
     string EventId, int EventVersion, string StepId, string Situation, string? Brief,
-    IReadOnlyList<VoiceQuestion> Questions);
+    IReadOnlyList<VoiceQuestion> Questions, IReadOnlyList<string> RoleStages);
 
 public sealed record LayaAssessment(
     double? Score,
@@ -122,7 +131,7 @@ public interface ILayaClient
 {
     Task<LayaResult> DecideAsync(
         string situation, string? brief, string transcript, IReadOnlyList<VoiceQuestion> questions,
-        CancellationToken cancellationToken);
+        IReadOnlyList<string> roleStages, CancellationToken cancellationToken);
 }
 
 public sealed record LlmRequest(string SystemPrompt, string UserPrompt);
@@ -158,7 +167,8 @@ public sealed class VoicePipelineService(
                 stt.ErrorMessage ?? "Распознавание не вернуло текст",
                 (int)timer.ElapsedMilliseconds) with { SttLatencyMs = stt.LatencyMs };
 
-        var laya = await layaClient.DecideAsync(request.Situation, request.Brief, stt.Text, request.Questions, cancellationToken);
+        var laya = await layaClient.DecideAsync(
+            request.Situation, request.Brief, stt.Text, request.Questions, request.RoleStages, cancellationToken);
         if (laya.ErrorCode is not null || string.IsNullOrWhiteSpace(laya.Choice))
             return VoicePipelineResult.Failure(
                 laya.ErrorCode ?? "LayaInvalidResponse",
@@ -257,13 +267,18 @@ public sealed class PolzaSttClient(HttpClient httpClient, VoiceOptions options) 
 public sealed class LayaClient(HttpClient httpClient, VoiceOptions options) : ILayaClient
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-    private static readonly IReadOnlyList<string> ScoreCriteria = Enumerable.Range(0, 11)
-        .Select(value => $"Вежливость ответа на уровне {value * 10}%")
-        .ToArray();
+    // Три описательных уровня вместо одиннадцати процентных: различают ответы не хуже,
+    // а запрос к Laya на CPU короче примерно на 250 токенов и 400 мс.
+    private static readonly IReadOnlyList<string> ScoreCriteria =
+    [
+        "Проводник грубит или пренебрегает пассажиром",
+        "Проводник отвечает сухо, без вежливых слов",
+        "Проводник отвечает вежливо: извиняется, благодарит, просит, обращается на Вы",
+    ];
 
     public async Task<LayaResult> DecideAsync(
         string situation, string? brief, string transcript, IReadOnlyList<VoiceQuestion> questions,
-        CancellationToken cancellationToken)
+        IReadOnlyList<string> roleStages, CancellationToken cancellationToken)
     {
         var timer = Stopwatch.StartNew();
         if (string.IsNullOrWhiteSpace(options.LayaToken))
@@ -289,7 +304,7 @@ public sealed class LayaClient(HttpClient httpClient, VoiceOptions options) : IL
                 instructions = "Есть ли в ответе нарушение требований безопасности?",
             },
         };
-        foreach (var stage in LayaAssessment.RoleStageCodes)
+        foreach (var stage in roleStages)
             layaQuestions[stage] = new
             {
                 type = "noul",
@@ -343,9 +358,9 @@ public sealed class LayaClient(HttpClient httpClient, VoiceOptions options) : IL
                 if (string.IsNullOrWhiteSpace(choice))
                     return new(null, null, "LayaInvalidResponse", "Laya не вернула Вариант", null, LatencyMs: (int)timer.ElapsedMilliseconds);
 
-                var assessment = ParseAssessment(answers);
+                var assessment = ParseAssessment(answers, roleStages);
                 if (assessment.Score is null || assessment.SafetyViolation is null ||
-                    LayaAssessment.RoleStageCodes.Any(stage => !assessment.RoleStages.ContainsKey(stage)))
+                    roleStages.Any(stage => !assessment.RoleStages.ContainsKey(stage)))
                     return new(null, null, "LayaInvalidResponse", "Laya не вернула полную оценку Коммуникации", null, LatencyMs: (int)timer.ElapsedMilliseconds);
                 return new(choice, confidence, null, null, null, assessment, (int)timer.ElapsedMilliseconds);
             }
@@ -360,7 +375,7 @@ public sealed class LayaClient(HttpClient httpClient, VoiceOptions options) : IL
         }
     }
 
-    private static LayaAssessment ParseAssessment(JsonElement answers)
+    private static LayaAssessment ParseAssessment(JsonElement answers, IReadOnlyList<string> roleStages)
     {
         var score = answers.TryGetProperty("score", out var scoreAnswer)
             ? GetDouble(scoreAnswer, "score") / (ScoreCriteria.Count - 1)
@@ -368,17 +383,17 @@ public sealed class LayaClient(HttpClient httpClient, VoiceOptions options) : IL
         var scoreConfidence = answers.TryGetProperty("score", out scoreAnswer)
             ? GetDouble(scoreAnswer, "answer_confidence") ?? GetDouble(scoreAnswer, "confidence")
             : null;
-        var roleStages = new Dictionary<string, double>();
-        foreach (var stage in LayaAssessment.RoleStageCodes)
+        var stages = new Dictionary<string, double>();
+        foreach (var stage in roleStages)
             if (answers.TryGetProperty(stage, out var stageAnswer) && GetDouble(stageAnswer, "noul") is { } value)
-                roleStages.Add(stage, value);
+                stages.Add(stage, value);
         var safety = answers.TryGetProperty("safety", out var safetyAnswer)
             ? GetDouble(safetyAnswer, "noul")
             : null;
         var safetyConfidence = answers.TryGetProperty("safety", out safetyAnswer)
             ? GetDouble(safetyAnswer, "answer_confidence") ?? GetDouble(safetyAnswer, "confidence")
             : null;
-        return new(score, scoreConfidence, roleStages, safety, safetyConfidence);
+        return new(score, scoreConfidence, stages, safety, safetyConfidence);
     }
 
     private static string? GetString(JsonElement element, string property) =>
@@ -406,7 +421,7 @@ public sealed class PolzaLlmClient(HttpClient httpClient, VoiceOptions options) 
 
         var payload = new
         {
-            model = options.LlmModel,
+            model = options.PassengerReplyModel,
             stream = true,
             reasoning = new { effort = options.LlmReasoningEffort },
             max_tokens = options.LlmMaxTokens,

@@ -16,12 +16,14 @@ using Microsoft.AspNetCore.Identity;
 using TurboSquadApp.Events;
 using TurboSquadApp.Content;
 using TurboSquadApp.Swipes;
+using TurboSquadApp.Blitz;
 using TurboSquadApp.Trips;
 using TurboSquadApp.Voice;
 using TurboSquadApp.Analytics;
 using TurboSquadApp.Questions;
 using TurboSquadApp.Sources;
 using TurboSquadApp.Scoring;
+using TurboSquadApp.Achievements;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -66,13 +68,15 @@ builder.Services.AddScoped<ContentSeeder>();
 builder.Services.AddScoped<TripService>();
 builder.Services.AddScoped<VoiceAnalyticsService>();
 builder.Services.AddScoped<SwipeShiftService>();
+builder.Services.AddScoped<BlitzSessionService>();
 builder.Services.AddScoped<KnowledgeScoringService>();
+builder.Services.AddScoped<AchievementService>();
 builder.Services.AddScoped<QuestionBankService>();
 builder.Services.AddScoped<EventCmsService>();
 builder.Services.AddScoped<SourceService>();
 builder.Services.AddScoped<QuestionGenerationService>();
 builder.Services.AddScoped<EventGenerationService>();
-builder.Services.AddSingleton(Random.Shared);   // колода Смены на свайпах; в тестах — с зерном
+builder.Services.AddSingleton(Random.Shared);   // колоды Смены на свайпах и Блица; в тестах — с зерном
 var voiceOptions = VoiceOptions.FromConfiguration(builder.Configuration);
 builder.Services.AddSingleton(voiceOptions);
 builder.Services.AddHttpClient<PolzaSttClient>(client =>
@@ -251,8 +255,10 @@ app.MapEventEndpoints();
 app.MapTripEndpoints();
 app.MapAnalyticsEndpoints();
 app.MapSwipeEndpoints();
+app.MapBlitzEndpoints();
 app.MapProfileEndpoints();
 app.MapLeaderboardEndpoints();
+app.MapAchievementEndpoints();
 app.MapQuestionBankEndpoints();
 app.MapSourceEndpoints();
 app.MapEventCmsEndpoints();
