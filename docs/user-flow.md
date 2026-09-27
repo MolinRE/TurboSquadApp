@@ -19,26 +19,26 @@
 
 ```mermaid
 flowchart LR
-    login[Вход] --> role{Роль}
+    login["Вход"] --> role{"Роль"}
 
-    role -->|Проводник| home[Главный экран]
-    home --> game{Выбор игры}
-    game --> trip[Симулятор рейса]
-    game --> swipe[Смена на свайпах]
-    game --> blitz[Блиц]
-    trip --> debrief[Разбор]
+    role -->|Проводник| home["Главный экран"]
+    home --> game{"Выбор игры"}
+    game --> trip["Симулятор рейса"]
+    game --> swipe["Смена на свайпах"]
+    game --> blitz["Блиц"]
+    trip --> debrief["Разбор"]
     swipe --> debrief
     blitz --> debrief
-    debrief --> profile[Профиль и прогресс]
+    debrief --> profile["Профиль и прогресс"]
     profile --> home
 
-    role -->|Методист| cms[CMS]
-    cms --> source[Источник]
-    source --> generate[Генерация]
-    generate --> draft[Черновик]
-    draft --> review[Проверка и правка]
-    review --> publish[Публикация версии]
-    publish --> notify[Уведомление доступным Проводникам]
+    role -->|Методист| cms["CMS"]
+    cms --> source["Источник"]
+    source --> generate["Генерация"]
+    generate --> draft["Черновик"]
+    draft --> review["Проверка и правка"]
+    review --> publish["Публикация версии"]
+    publish --> notify["Уведомление доступным Проводникам"]
     notify --> home
 ```
 
@@ -63,20 +63,20 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    start[Начать Рейс] --> class[Выбрать Класс обслуживания]
-    class --> shift[Заступ: медкомиссия и приёмка поезда]
-    shift --> choice[Проактивный выбор]
-    choice --> event[Событие]
-    event --> answer{Тип Шага}
-    answer -->|Голос| voice[Речь Проводника]
-    answer -->|Кнопки| buttons[Выбор Варианта]
-    voice --> server[Сервер: таймер, Laya, Шкалы, Флаги]
-    buttons --> server
-    server --> next{Результат}
-    next -->|Следующий Шаг| event
-    next -->|Следующее Событие| choice
-    next -->|Прибытие| review[Разбор Рейса]
-    next -->|Критическая ошибка или Срыв| review
+    startTrip["Начать Рейс"] --> serviceClass["Выбрать Класс обслуживания"]
+    serviceClass --> shiftStart["Заступ: медкомиссия и приёмка поезда"]
+    shiftStart --> proactiveChoice["Проактивный выбор"]
+    proactiveChoice --> tripEvent["Событие"]
+    tripEvent --> answerType{"Тип Шага"}
+    answerType -->|Голос| voiceAnswer["Речь Проводника"]
+    answerType -->|Кнопки| buttonAnswer["Выбор Варианта"]
+    voiceAnswer --> serverEngine["Сервер: таймер, Laya, Шкалы, Флаги"]
+    buttonAnswer --> serverEngine
+    serverEngine --> result{"Результат"}
+    result -->|Следующий Шаг| tripEvent
+    result -->|Следующее Событие| proactiveChoice
+    result -->|Прибытие| tripReview["Разбор Рейса"]
+    result -->|Критическая ошибка или Срыв| tripReview
 ```
 
 #### Последовательность одного Рейса
@@ -186,16 +186,16 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    a[Выбрать Источник] --> b[Очистить ПДн]
-    b --> c[Разбить по разделам и пунктам]
-    c --> d[Сгенерировать JSON Черновика]
-    d --> e{Валидация}
-    e -->|Ошибки| fix[Исправить по списку ошибок, до 2 попыток]
-    fix --> e
-    e -->|Успех| draft[Сохранить Черновик]
-    draft --> edit[Проверить цитаты и отредактировать]
-    edit --> graph[Проверить граф и превью]
-    graph --> publish[Опубликовать версию вручную]
+    chooseSource["Выбрать Источник"] --> cleanPii["Очистить ПДн"]
+    cleanPii --> chunkText["Разбить по разделам и пунктам"]
+    chunkText --> generateJson["Сгенерировать JSON Черновика"]
+    generateJson --> validate{"Валидация"}
+    validate -->|Ошибки| fixDraft["Исправить по списку ошибок, до 2 попыток"]
+    fixDraft --> validate
+    validate -->|Успех| saveDraft["Сохранить Черновик"]
+    saveDraft --> editDraft["Проверить цитаты и отредактировать"]
+    editDraft --> graphCheck["Проверить граф и превью"]
+    graphCheck --> publishVersion["Опубликовать версию вручную"]
 ```
 
 Для каждого Вопроса и Варианта сохраняются цитата и пункт Источника. Если Методист удаляет Источник, его Черновики удаляются, а опубликованный контент сохраняется с пометкой «Источник удалён».
