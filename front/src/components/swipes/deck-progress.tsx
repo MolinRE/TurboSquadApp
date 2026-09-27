@@ -7,8 +7,12 @@ const verdictTone: Record<Verdict, string> = {
   unknown: "bg-warning",
 };
 
-/** Прогресс колоды точками: пройденные окрашены вердиктом, текущая — тёмная, впереди — серые. */
-export function DeckProgress({ progress }: { progress: ShiftProgress }) {
+/**
+ * Прогресс колоды точками — по точке на Вопрос: отвеченные окрашены вердиктом первого ответа,
+ * текущая — тёмная, впереди — серые. Повтор новой точки не добавляет и тёмной не делает:
+ * его Вопрос уже отмечен.
+ */
+export function DeckProgress({ progress, isRepeat = false }: { progress: ShiftProgress; isRepeat?: boolean }) {
   const { verdicts, total } = progress;
   return (
     <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -27,7 +31,7 @@ export function DeckProgress({ progress }: { progress: ShiftProgress }) {
               "h-1.5 flex-1 rounded-full",
               index < verdicts.length
                 ? verdictTone[verdicts[index]]
-                : index === verdicts.length
+                : index === verdicts.length && !isRepeat
                   ? "bg-foreground/70"
                   : "bg-muted",
             )}

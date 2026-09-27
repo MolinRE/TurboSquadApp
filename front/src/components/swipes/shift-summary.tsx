@@ -1,22 +1,27 @@
 import Link from "next/link";
 import { CircleCheck, CircleX, Zap } from "lucide-react";
+import { cn } from "cn";
 import { Button } from "@/components/ui/button";
 import { ScalesPanel } from "@/components/game/scale-meter";
-import type { CycleInfo, CycleResult, ShiftState } from "@/lib/swipes/contract";
+import type { CycleInfo, CycleResult, MistakeItem, ShiftState } from "@/lib/swipes/contract";
+import { ExplanationText, SourceLine } from "./explanation";
 import { formatSeconds } from "./format";
 
 /**
- * Итог законченной Смены. «В своём темпе» — итог и Шкалы; «На скорость» — между Циклами
- * итог Цикла и что будет дальше, после последнего — сравнение Циклов.
+ * Итог законченной Смены. «В своём темпе» — итог, Шкалы и «Что повторить» с Работой над
+ * ошибками, в том числе после Срыва; «На скорость» — между Циклами итог Цикла и что будет
+ * дальше, после последнего — сравнение Циклов.
  */
 export function ShiftSummary({
   shift,
   onRestart,
   onNextCycle,
+  onWorkOnMistakes,
 }: {
   shift: ShiftState;
   onRestart: () => void;
   onNextCycle: () => void;
+  onWorkOnMistakes: () => void;
 }) {
   const { cycle } = shift;
   if (cycle && cycle.number < cycle.timeLimitsMs.length) {
@@ -24,12 +29,46 @@ export function ShiftSummary({
   }
   if (cycle) return <CyclesSummary shift={shift} cycle={cycle} onRestart={onRestart} />;
 
+  const { mistakes } = shift.result!;
   return (
     <div className="flex flex-1 flex-col gap-3">
       <ResultHeadline shift={shift} title={shift.status === "passed" ? "Смена пройдена" : "Срыв смены"} />
       <ScalesPanel scales={shift.scales} />
-      <SummaryActions primary="Новая Смена" onPrimary={onRestart} />
+      {mistakes.length ? (
+        <>
+          <WhatToRepeat mistakes={mistakes} />
+          <SummaryActions
+            primary={{ label: "Работа над ошибками", onClick: onWorkOnMistakes }}
+            secondary={{ label: "Новая Смена", onClick: onRestart }}
+          />
+        </>
+      ) : (
+        <SummaryActions primary={{ label: "Новая Смена", onClick: onRestart }} />
+      )}
     </div>
+  );
+}
+
+/** «Что повторить»: Вопросы с ошибкой или «Не знаю» — формулировка, Пояснение и пункт Источника. */
+function WhatToRepeat({ mistakes }: { mistakes: MistakeItem[] }) {
+  return (
+    <section className="flex flex-col gap-3 rounded-xl bg-card p-5">
+      <h2 className="flex items-baseline justify-between gap-2 text-lg font-extrabold">
+        Что повторить
+        <span className="text-sm font-bold text-muted-foreground tabular-nums">{mistakes.length}</span>
+      </h2>
+      <ol className="flex flex-col divide-y divide-border">
+        {mistakes.map((mistake) => (
+          <li key={mistake.questionId} className="flex flex-col gap-1.5 py-3 first:pt-0 last:pb-0">
+            <p className="text-sm text-muted-foreground">{mistake.statement}</p>
+            <p className="text-sm leading-relaxed">
+              <ExplanationText explanation={mistake.explanation} />
+            </p>
+            <SourceLine source={mistake.explanation.source} />
+          </li>
+        ))}
+      </ol>
+    </section>
   );
 }
 
@@ -93,7 +132,7 @@ function CycleBreak({
           печатается быстрее. Шкалы — с начала.
         </p>
       </section>
-      <SummaryActions primary={`Начать Цикл ${next}`} onPrimary={onNextCycle} />
+      <SummaryActions primary={{ label: `Начать Цикл ${next}`, onClick: onNextCycle }} />
     </div>
   );
 }
@@ -154,20 +193,31 @@ function CyclesSummary({
           </tbody>
         </table>
       </section>
-      <SummaryActions primary="Новая Смена" onPrimary={onRestart} />
+      <SummaryActions primary={{ label: "Новая Смена", onClick: onRestart }} />
     </div>
   );
 }
 
-function SummaryActions({ primary, onPrimary }: { primary: string; onPrimary: () => void }) {
+type SummaryAction = { label: string; onClick: () => void };
+
+/** Главное действие во всю ширину; под ним «К играм», а если есть второе действие — оба в ряд. */
+function SummaryActions({ primary, secondary }: { primary: SummaryAction; secondary?: SummaryAction }) {
+  const outlineClass = "h-12 bg-card text-base font-bold";
   return (
     <div className="mt-auto grid gap-2">
-      <Button onClick={onPrimary} className="h-12 text-base font-bold">
-        {primary}
+      <Button onClick={primary.onClick} className="h-12 text-base font-bold">
+        {primary.label}
       </Button>
-      <Button asChild variant="outline" className="h-12 bg-card text-base font-bold">
-        <Link href="/games">К играм</Link>
-      </Button>
+      <div className={cn("grid gap-2", secondary && "grid-cols-2")}>
+        {secondary ? (
+          <Button variant="outline" onClick={secondary.onClick} className={outlineClass}>
+            {secondary.label}
+          </Button>
+        ) : null}
+        <Button asChild variant="outline" className={outlineClass}>
+          <Link href="/games">К играм</Link>
+        </Button>
+      </div>
     </div>
   );
 }

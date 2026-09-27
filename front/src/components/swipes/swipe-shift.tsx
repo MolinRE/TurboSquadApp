@@ -84,7 +84,8 @@ function skipsPause(shift: ShiftState, outcome: AnswerOutcome) {
  * Сначала выбор Режима. Формулировка печатается, затем появляются варианты и идёт секундомер
  * или, в Циклах, обратный отсчёт. После ответа — Пояснение: после ошибки, «Не знаю» и
  * «Время вышло» — по «Понятно», после верного — через паузу (в Циклах 2–3 без неё).
- * Свайп работает в любой части экрана.
+ * Ошибку «В своём темпе» сервер возвращает Повтором; в итоге — «Что повторить» и Работа
+ * над ошибками. Свайп работает в любой части экрана.
  */
 export function SwipeShift() {
   const [shift, setShift] = useState<ShiftState | null>(null);
@@ -121,6 +122,10 @@ export function SwipeShift() {
 
   function nextCycle() {
     if (shift) load(() => swipesApi.startNextCycle(shift.shiftId));
+  }
+
+  function workOnMistakes() {
+    if (shift) load(() => swipesApi.startWorkOnMistakes(shift.shiftId));
   }
 
   function restart() {
@@ -217,7 +222,14 @@ export function SwipeShift() {
   }
 
   if (phase.kind === "finished") {
-    return <ShiftSummary shift={shift} onRestart={restart} onNextCycle={nextCycle} />;
+    return (
+      <ShiftSummary
+        shift={shift}
+        onRestart={restart}
+        onNextCycle={nextCycle}
+        onWorkOnMistakes={workOnMistakes}
+      />
+    );
   }
 
   const showingFeedback = (phase.kind === "feedback" || phase.kind === "advancing") && last;
@@ -253,7 +265,7 @@ export function SwipeShift() {
               onReady={onCardReady}
               header={
                 <div className="flex items-center gap-3">
-                  <DeckProgress progress={shift.progress} />
+                  <DeckProgress progress={shift.progress} isRepeat={card.isRepeat} />
                   {card.timeLimitMs === null ? (
                     <Stopwatch startedAt={timing.startedAt} stoppedAt={timing.stoppedAt} />
                   ) : (
