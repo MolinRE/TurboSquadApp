@@ -85,41 +85,222 @@ flowchart LR
 
 ```mermaid
 erDiagram
-    APP_USER ||--o{ APP_USER_ROLE : has
-    DEPOT ||--o{ BRIGADE : contains
-    BRIGADE ||--o{ APP_USER : assigns
-    APP_USER ||--o{ TRIP : starts
-    TRIP ||--o{ TRIP_JOURNAL : records
-    APP_USER ||--o{ SWIPE_SHIFT : starts
-    SWIPE_SHIFT ||--o{ SWIPE_ANSWER : contains
-    SOURCE ||--o{ QUESTION : generates
-    SOURCE ||--o{ EVENT_DRAFT : generates
-    APP_USER ||--o{ KNOWLEDGE_MASTERY : learns
+    DEPOTS ||--o{ BRIGADES : contains
+    DEPOTS ||--o{ APP_USERS : assigns
+    BRIGADES ||--o{ APP_USERS : assigns
+    APP_USERS ||--o{ USER_ROLES : has
 
-    TRIP {
-      uuid id
-      string service_class
-      jsonb directory_snapshot
-      jsonb settings_snapshot
-      jsonb event_versions
-      string status
-      datetime step_started_at
+    APP_USERS ||--o{ TRIPS : starts
+    TRIPS ||--o{ TRIP_JOURNAL : contains
+
+    APP_USERS ||--o{ SWIPE_SHIFTS : starts
+    SWIPE_SHIFTS ||--o{ SWIPE_ANSWERS : contains
+    SWIPE_SHIFTS ||--o{ SWIPE_SHIFTS : previous_cycle
+    QUESTIONS ||--o{ SWIPE_ANSWERS : answers
+
+    APP_USERS ||--o{ BLITZ_SESSIONS : starts
+    BLITZ_SESSIONS ||--o{ BLITZ_ANSWERS : contains
+
+    SOURCES ||--o{ QUESTIONS : generates
+    SOURCES ||--o{ EVENT_DRAFTS : generates
+
+    APP_USERS ||--o{ KNOWLEDGE_MASTERIES : develops
+    APP_USERS ||--o| CONDUCTOR_PROFILES : has
+    APP_USERS ||--o{ ACHIEVEMENT_AWARDS : earns
+
+    DEPOTS {
+        uuid id PK
+        string name
     }
+
+    BRIGADES {
+        uuid id PK
+        uuid depot_id FK
+        string name
+    }
+
+    APP_USERS {
+        uuid id PK
+        string username UK
+        string display_name
+        string password_hash
+        uuid depot_id FK
+        uuid brigade_id FK
+        datetime created_at
+    }
+
+    USER_ROLES {
+        uuid user_id PK, FK
+        string role PK
+    }
+
+    SOURCES {
+        uuid id PK
+        string title
+        text text
+        datetime created_at
+    }
+
+    QUESTIONS {
+        string id PK
+        string type
+        string status
+        string statement
+        jsonb options
+        text explanation_text
+        text explanation_key_fact
+        string quote
+        string source
+        uuid source_id FK
+        string topic
+        jsonb categories
+        jsonb service_classes
+        float base_frequency
+        int time_limit_sec
+        int knowledge_cost
+    }
+
+    EVENT_DOCUMENTS {
+        string event_id PK
+        int version PK
+        jsonb document
+        datetime published_at
+    }
+
+    EVENT_DRAFTS {
+        uuid id PK
+        uuid source_id FK
+        jsonb document
+        datetime created_at
+    }
+
+    SCALES {
+        string code PK
+        string name
+        int min
+        int max
+        int start
+        int failure_threshold
+        boolean mandatory
+        string failure_reason
+    }
+
+    SERVICE_CLASSES {
+        string code PK
+        string name
+        string description
+        int sort_order
+    }
+
+    TRIP_SETTINGS {
+        string id PK
+        jsonb document
+    }
+
+    TRIPS {
+        uuid id PK
+        uuid user_id FK
+        string service_class
+        string status
+        string failure_cause
+        string failure_scale
+        jsonb directory
+        jsonb settings
+        jsonb event_versions
+        datetime started_at
+        datetime finished_at
+        datetime step_started_at
+    }
+
     TRIP_JOURNAL {
-      int seq
-      string kind
-      string event_id
-      int event_version
-      string variant_id
-      jsonb scale_changes
-      text voice_transcript
-      string voice_choice
-      text passenger_reply
+        uuid trip_id PK, FK
+        int seq PK
+        string kind
+        string event_id
+        int event_version
+        string step_id
+        string variant_id
+        boolean timed_out
+        int knowledge_delta
+        jsonb scale_changes
+        jsonb flags_set
+        text voice_transcript
+        string voice_choice
+        text voice_error
+        text voice_passenger_reply
+        int voice_latency_ms
+        datetime created_at
     }
-    EVENT_DOCUMENT {
-      string event_id
-      int version
-      jsonb document
+
+    SWIPE_SHIFTS {
+        uuid id PK
+        uuid user_id FK
+        string mode
+        int cycle
+        uuid previous_cycle_id FK
+        string status
+        string failure_scale
+        jsonb deck
+        jsonb scales
+        datetime started_at
+        datetime finished_at
+        datetime card_shown_at
+    }
+
+    SWIPE_ANSWERS {
+        uuid shift_id PK, FK
+        int seq PK
+        string question_id FK
+        string answer
+        string verdict
+        boolean is_repeat
+        int elapsed_ms
+        int knowledge_delta
+        jsonb question_snapshot
+        jsonb scale_changes
+        datetime answered_at
+    }
+
+    BLITZ_SESSIONS {
+        uuid id PK
+        uuid user_id FK
+        string status
+        jsonb deck
+        datetime started_at
+        datetime finished_at
+        datetime question_shown_at
+    }
+
+    BLITZ_ANSWERS {
+        uuid session_id PK, FK
+        int seq PK
+        string question_id
+        jsonb selected_option_ids
+        boolean timed_out
+        string verdict
+        int elapsed_ms
+        datetime answered_at
+    }
+
+    KNOWLEDGE_MASTERIES {
+        uuid user_id PK, FK
+        string unit_type PK
+        string unit_id PK
+        string competence PK
+        boolean is_mastered
+        int awarded_cost
+        datetime last_attempt_at
+    }
+
+    CONDUCTOR_PROFILES {
+        uuid user_id PK, FK
+        int rank_index
+    }
+
+    ACHIEVEMENT_AWARDS {
+        uuid user_id PK, FK
+        string achievement_id PK
+        datetime earned_at
     }
 ```
 
