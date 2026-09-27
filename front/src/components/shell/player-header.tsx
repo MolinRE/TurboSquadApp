@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { LogOut } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { initialsOf, unitOf, useCurrentUser } from "@/lib/use-current-user";
@@ -27,6 +28,15 @@ export function PlayerHeader() {
             <Skeleton className="h-3 w-40" />
           </span>
         )}
+      </Link>
+      {/* Страница входа сама забывает токен: так же меняют аккаунт в рабочем месте. */}
+      <Link
+        href="/login"
+        aria-label="Сменить аккаунт"
+        title="Сменить аккаунт"
+        className="grid size-10 shrink-0 place-items-center rounded-full bg-card text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
+      >
+        <LogOut className="size-5" aria-hidden />
       </Link>
     </header>
   );

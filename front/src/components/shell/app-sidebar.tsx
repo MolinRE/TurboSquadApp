@@ -27,13 +27,16 @@ import {
 } from "@/components/ui/sidebar";
 import { BrandMark } from "@/components/shell/brand-mark";
 import { initialsOf, roleLabelOf, useCurrentUser } from "@/lib/use-current-user";
-import {
-  screens,
-  workspaceSections,
-  type WorkspaceSection,
-} from "@/lib/screens";
+import { screens, workspaceSections, type Screen } from "@/lib/screens";
 
-const sectionOrder: WorkspaceSection[] = ["analytics", "cms"];
+const menuScreens = screens.filter((s) => s.template === "workspace" && !s.hidden);
+
+// Готовые экраны — по разделам, заглушки — отдельной группой в конце.
+const menuGroups: { label: string; items: Screen[] }[] = [
+  { label: workspaceSections.analytics, items: menuScreens.filter((s) => s.section === "analytics" && !s.inProgress) },
+  { label: workspaceSections.cms, items: menuScreens.filter((s) => s.section === "cms" && !s.inProgress) },
+  { label: "В разработке", items: menuScreens.filter((s) => s.inProgress) },
+];
 
 // Активный пункт как на эталоне: белая плашка на тёмном меню.
 const activeItem =
@@ -90,16 +93,14 @@ export function AppSidebar() {
       </SidebarHeader>
 
       <SidebarContent>
-        {sectionOrder.map((section) => (
-          <SidebarGroup key={section}>
+        {menuGroups.map(({ label, items }) => (
+          <SidebarGroup key={label}>
             <SidebarGroupLabel className="text-sidebar-foreground/50 uppercase tracking-wider">
-              {workspaceSections[section]}
+              {label}
             </SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {screens
-                  .filter((s) => s.section === section && !s.hidden)
-                  .map((s) => {
+                {items.map((s) => {
                     const Icon = s.icon;
                     const active =
                       pathname === s.path || pathname.startsWith(s.path + "/");
