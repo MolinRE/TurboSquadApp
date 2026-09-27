@@ -265,7 +265,7 @@ export function SwipeShift() {
               onReady={onCardReady}
               header={
                 <div className="flex items-center gap-3">
-                  <DeckProgress progress={shift.progress} repeat={card.isRepeat} />
+                  <DeckProgress progress={shift.progress} isRepeat={card.isRepeat} />
                   {card.timeLimitMs === null ? (
                     <Stopwatch startedAt={timing.startedAt} stoppedAt={timing.stoppedAt} />
                   ) : (

@@ -38,13 +38,12 @@ export function ShiftSummary({
         <>
           <WhatToRepeat mistakes={mistakes} />
           <SummaryActions
-            primary="Работа над ошибками"
-            onPrimary={onWorkOnMistakes}
+            primary={{ label: "Работа над ошибками", onClick: onWorkOnMistakes }}
             secondary={{ label: "Новая Смена", onClick: onRestart }}
           />
         </>
       ) : (
-        <SummaryActions primary="Новая Смена" onPrimary={onRestart} />
+        <SummaryActions primary={{ label: "Новая Смена", onClick: onRestart }} />
       )}
     </div>
   );
@@ -133,7 +132,7 @@ function CycleBreak({
           печатается быстрее. Шкалы — с начала.
         </p>
       </section>
-      <SummaryActions primary={`Начать Цикл ${next}`} onPrimary={onNextCycle} />
+      <SummaryActions primary={{ label: `Начать Цикл ${next}`, onClick: onNextCycle }} />
     </div>
   );
 }
@@ -194,26 +193,20 @@ function CyclesSummary({
           </tbody>
         </table>
       </section>
-      <SummaryActions primary="Новая Смена" onPrimary={onRestart} />
+      <SummaryActions primary={{ label: "Новая Смена", onClick: onRestart }} />
     </div>
   );
 }
 
+type SummaryAction = { label: string; onClick: () => void };
+
 /** Главное действие во всю ширину; под ним «К играм», а если есть второе действие — оба в ряд. */
-function SummaryActions({
-  primary,
-  onPrimary,
-  secondary,
-}: {
-  primary: string;
-  onPrimary: () => void;
-  secondary?: { label: string; onClick: () => void };
-}) {
+function SummaryActions({ primary, secondary }: { primary: SummaryAction; secondary?: SummaryAction }) {
   const outlineClass = "h-12 bg-card text-base font-bold";
   return (
     <div className="mt-auto grid gap-2">
-      <Button onClick={onPrimary} className="h-12 text-base font-bold">
-        {primary}
+      <Button onClick={primary.onClick} className="h-12 text-base font-bold">
+        {primary.label}
       </Button>
       <div className={cn("grid gap-2", secondary && "grid-cols-2")}>
         {secondary ? (

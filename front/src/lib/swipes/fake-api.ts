@@ -36,8 +36,8 @@ const MAX_REPEATS = 2;
 
 type AnswerRecord = { questionId: string; verdict: Verdict; elapsedMs: number; isRepeat: boolean };
 
-/** Показ Вопроса карточкой; repeat — номер Повтора, 0 — первый показ. */
-type Show = { question: SwipeQuestion; repeat: number };
+/** Карточка в очереди Смены; repeats — сколько раз Вопрос уже вернулся Повтором, 0 — первый показ. */
+type QueuedCard = { question: SwipeQuestion; repeats: number };
 
 type FakeShift = {
   id: string;
@@ -47,7 +47,7 @@ type FakeShift = {
   previousCycles: CycleResult[];
   deck: SwipeQuestion[];
   /** Показы впереди, первый — текущая карточка. Незаконченный Вопрос стоит в очереди ровно раз. */
-  queue: Show[];
+  queue: QueuedCard[];
   scales: Record<string, number>;
   status: ShiftStatus;
   failedScale: string | null;
@@ -83,7 +83,7 @@ function createShift(
     cycle,
     previousCycles,
     deck,
-    queue: deck.map((question) => ({ question, repeat: 0 })),
+    queue: deck.map((question) => ({ question, repeats: 0 })),
     scales: Object.fromEntries(localScales.map((scale) => [scale.code, scale.start])),
     status: "running",
     failedScale: null,
@@ -117,7 +117,7 @@ function readingMsOf(shift: FakeShift, question: SwipeQuestion) {
   return question.statement.length * msPerChar;
 }
 
-function toCard(shift: FakeShift, { question, repeat }: Show): ShiftCard {
+function toCard(shift: FakeShift, { question, repeats }: QueuedCard): ShiftCard {
   return {
     questionId: question.id,
     statement: question.statement,
@@ -125,7 +125,7 @@ function toCard(shift: FakeShift, { question, repeat }: Show): ShiftCard {
     leftLabel: question.left.label,
     topic: question.topic,
     serviceClasses: question.serviceClasses,
-    isRepeat: repeat > 0,
+    isRepeat: repeats > 0,
     readingMs: readingMsOf(shift, question),
     timeLimitMs: cycleOf(shift)?.timeLimitMs ?? null,
   };
@@ -232,31 +232,31 @@ function applyDeltas(shift: FakeShift, deltas: Record<string, number>): Record<s
 
 /** Текущая карточка, на которую можно ответить, и время ответа от конца её печати. */
 function currentCard(shift: FakeShift, questionId: string, answeredAt: number) {
-  const show = shift.queue[0];
-  if (shift.status !== "running" || shift.shownAt === null || show.question.id !== questionId) {
+  const card = shift.queue[0];
+  if (shift.status !== "running" || shift.shownAt === null || card.question.id !== questionId) {
     throw new Error("На эту карточку уже ответили");
   }
-  const elapsedMs = Math.max(0, answeredAt - shift.shownAt - readingMsOf(shift, show.question));
-  return { show, elapsedMs };
+  const elapsedMs = Math.max(0, answeredAt - shift.shownAt - readingMsOf(shift, card.question));
+  return { card, elapsedMs };
 }
 
 function settle(
   shift: FakeShift,
-  show: Show,
+  card: QueuedCard,
   answer: SwipeAnswer,
   elapsedMs: number,
   timedOut: boolean,
 ): AnswerOutcome {
-  const { question } = show;
+  const { question, repeats } = card;
   const verdict = verdictOf(question, answer);
   const scaleChanges = applyDeltas(shift, deltasOf(question, answer));
-  shift.answers.push({ questionId: question.id, verdict, elapsedMs, isRepeat: show.repeat > 0 });
+  shift.answers.push({ questionId: question.id, verdict, elapsedMs, isRepeat: repeats > 0 });
   shift.queue.shift();
   shift.shownAt = null;
-  if (verdict !== "correct" && repeatsMistakes(shift) && show.repeat < MAX_REPEATS) {
+  if (verdict !== "correct" && repeatsMistakes(shift) && repeats < MAX_REPEATS) {
     // Через REPEAT_AFTER_CARDS Карточек, а если столько не осталось — в конец.
     const at = Math.min(REPEAT_AFTER_CARDS, shift.queue.length);
-    shift.queue.splice(at, 0, { question, repeat: show.repeat + 1 });
+    shift.queue.splice(at, 0, { question, repeats: repeats + 1 });
   }
 
   const broken = localScales.find((scale) => shift.scales[scale.code] <= scale.failureThreshold);
@@ -301,24 +301,24 @@ export const fakeSwipesApi: SwipesApi = {
     const answeredAt = Date.now();
     await delay();
     const shift = findShift(shiftId);
-    const { show, elapsedMs } = currentCard(shift, questionId, answeredAt);
+    const { card, elapsedMs } = currentCard(shift, questionId, answeredAt);
     const limit = cycleOf(shift)?.timeLimitMs;
     if (limit !== undefined && elapsedMs > limit + TIMEOUT_TOLERANCE_MS) {
-      return settle(shift, show, "unknown", limit, true);
+      return settle(shift, card, "unknown", limit, true);
     }
-    return settle(shift, show, answer, elapsedMs, false);
+    return settle(shift, card, answer, elapsedMs, false);
   },
 
   async timeOut(shiftId, questionId) {
     const answeredAt = Date.now();
     await delay();
     const shift = findShift(shiftId);
-    const { show, elapsedMs } = currentCard(shift, questionId, answeredAt);
+    const { card, elapsedMs } = currentCard(shift, questionId, answeredAt);
     const limit = cycleOf(shift)?.timeLimitMs;
     if (limit === undefined || elapsedMs < limit - TIMEOUT_TOLERANCE_MS) {
       throw new Error("Время ещё не вышло");
     }
-    return settle(shift, show, "unknown", limit, true);
+    return settle(shift, card, "unknown", limit, true);
   },
 
   async startNextCycle(shiftId) {

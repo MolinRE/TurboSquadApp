@@ -12,7 +12,7 @@ const verdictTone: Record<Verdict, string> = {
  * текущая — тёмная, впереди — серые. Повтор новой точки не добавляет и тёмной не делает:
  * его Вопрос уже отмечен.
  */
-export function DeckProgress({ progress, repeat = false }: { progress: ShiftProgress; repeat?: boolean }) {
+export function DeckProgress({ progress, isRepeat = false }: { progress: ShiftProgress; isRepeat?: boolean }) {
   const { verdicts, total } = progress;
   return (
     <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -31,7 +31,7 @@ export function DeckProgress({ progress, repeat = false }: { progress: ShiftProg
               "h-1.5 flex-1 rounded-full",
               index < verdicts.length
                 ? verdictTone[verdicts[index]]
-                : index === verdicts.length && !repeat
+                : index === verdicts.length && !isRepeat
                   ? "bg-foreground/70"
                   : "bg-muted",
             )}
