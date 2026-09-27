@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using TurboSquadApp.Data;
@@ -11,9 +12,11 @@ using TurboSquadApp.Data;
 namespace TurboSquadApp.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260927154126_AddEventDrafts")]
+    partial class AddEventDrafts
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -161,22 +164,6 @@ namespace TurboSquadApp.Data.Migrations
                         });
                 });
 
-            modelBuilder.Entity("TurboSquadApp.Data.ConductorProfileRecord", b =>
-                {
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("user_id");
-
-                    b.Property<int>("RankIndex")
-                        .HasColumnType("integer")
-                        .HasColumnName("rank_index");
-
-                    b.HasKey("UserId")
-                        .HasName("pk_conductor_profiles");
-
-                    b.ToTable("conductor_profiles", (string)null);
-                });
-
             modelBuilder.Entity("TurboSquadApp.Data.Depot", b =>
                 {
                     b.Property<Guid>("Id")
@@ -234,48 +221,6 @@ namespace TurboSquadApp.Data.Migrations
                     b.ToTable("event_documents", (string)null);
                 });
 
-            modelBuilder.Entity("TurboSquadApp.Data.KnowledgeMasteryRecord", b =>
-                {
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("user_id");
-
-                    b.Property<string>("UnitType")
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("unit_type");
-
-                    b.Property<string>("UnitId")
-                        .HasMaxLength(512)
-                        .HasColumnType("character varying(512)")
-                        .HasColumnName("unit_id");
-
-                    b.Property<string>("Competence")
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
-                        .HasColumnName("competence");
-
-                    b.Property<int>("AwardedCost")
-                        .HasColumnType("integer")
-                        .HasColumnName("awarded_cost");
-
-                    b.Property<bool>("IsMastered")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_mastered");
-
-                    b.Property<DateTimeOffset>("LastAttemptAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("last_attempt_at");
-
-                    b.HasKey("UserId", "UnitType", "UnitId", "Competence")
-                        .HasName("pk_knowledge_masteries");
-
-                    b.HasIndex("UserId")
-                        .HasDatabaseName("ix_knowledge_masteries_user_id");
-
-                    b.ToTable("knowledge_masteries", (string)null);
-                });
-
             modelBuilder.Entity("TurboSquadApp.Data.EventDraftRecord", b =>
                 {
                     b.Property<Guid>("Id")
@@ -330,12 +275,6 @@ namespace TurboSquadApp.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("explanation_text");
-
-                    b.Property<int>("KnowledgeCost")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(10)
-                        .HasColumnName("knowledge_cost");
 
                     b.Property<string>("Options")
                         .IsRequired()
@@ -528,19 +467,11 @@ namespace TurboSquadApp.Data.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("is_repeat");
 
-                    b.Property<int>("KnowledgeDelta")
-                        .HasColumnType("integer")
-                        .HasColumnName("knowledge_delta");
-
                     b.Property<string>("QuestionId")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)")
                         .HasColumnName("question_id");
-
-                    b.Property<string>("QuestionSnapshot")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("question_snapshot");
 
                     b.Property<string>("ScaleChanges")
                         .IsRequired()
@@ -672,10 +603,6 @@ namespace TurboSquadApp.Data.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
                         .HasColumnName("kind");
-
-                    b.Property<int>("KnowledgeDelta")
-                        .HasColumnType("integer")
-                        .HasColumnName("knowledge_delta");
 
                     b.Property<string>("OptionId")
                         .HasMaxLength(100)
@@ -946,26 +873,6 @@ namespace TurboSquadApp.Data.Migrations
                         .HasForeignKey("SourceId")
                         .OnDelete(DeleteBehavior.SetNull)
                         .HasConstraintName("fk_event_drafts_sources_source_id");
-                });
-
-            modelBuilder.Entity("TurboSquadApp.Data.ConductorProfileRecord", b =>
-                {
-                    b.HasOne("TurboSquadApp.Data.AppUser", null)
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_conductor_profiles_users_user_id");
-                });
-
-            modelBuilder.Entity("TurboSquadApp.Data.KnowledgeMasteryRecord", b =>
-                {
-                    b.HasOne("TurboSquadApp.Data.AppUser", null)
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_knowledge_masteries_users_user_id");
                 });
 
             modelBuilder.Entity("TurboSquadApp.Data.QuestionRecord", b =>

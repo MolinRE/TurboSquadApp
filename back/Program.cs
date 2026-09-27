@@ -71,6 +71,7 @@ builder.Services.AddScoped<QuestionBankService>();
 builder.Services.AddScoped<EventCmsService>();
 builder.Services.AddScoped<SourceService>();
 builder.Services.AddScoped<QuestionGenerationService>();
+builder.Services.AddScoped<EventGenerationService>();
 builder.Services.AddSingleton(Random.Shared);   // колода Смены на свайпах; в тестах — с зерном
 var voiceOptions = VoiceOptions.FromConfiguration(builder.Configuration);
 builder.Services.AddSingleton(voiceOptions);
@@ -91,6 +92,12 @@ builder.Services.AddHttpClient<PolzaQuestionGenerationClient>(client =>
     client.Timeout = Timeout.InfiniteTimeSpan;
 });
 builder.Services.AddScoped<IQuestionGenerationClient>(sp => sp.GetRequiredService<PolzaQuestionGenerationClient>());
+builder.Services.AddHttpClient<PolzaEventGenerationClient>(client =>
+{
+    client.BaseAddress = new Uri(voiceOptions.PolzaBaseUrl.TrimEnd('/') + "/");
+    client.Timeout = Timeout.InfiniteTimeSpan;
+});
+builder.Services.AddScoped<IEventGenerationClient>(sp => sp.GetRequiredService<PolzaEventGenerationClient>());
 builder.Services.AddScoped<IVoicePipeline, VoicePipelineService>();
 builder.Services.AddScoped<ISttClient>(sp => sp.GetRequiredService<PolzaSttClient>());
 builder.Services.AddScoped<ILayaClient>(sp => sp.GetRequiredService<LayaClient>());

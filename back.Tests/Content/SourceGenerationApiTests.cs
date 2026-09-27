@@ -291,6 +291,27 @@ public class SourceGenerationApiTests
     }
 
     [Fact]
+    public async Task Methodologist_can_compare_question_models_but_unknown_model_is_rejected()
+    {
+        await using var factory = new TripApiFactory();
+        var generator = factory.Services.GetRequiredService<FakeQuestionGenerationClient>();
+        generator.Response = _ => $$"""{"questions":[{{ValidQuestion("Как проверить билет?")}}]}""";
+        using var client = await factory.CreateUserClient(UserRoles.Methodologist);
+        var id = await CreateSource(client, "1. Проверить билет пассажира.");
+
+        var generated = await client.PostAsJsonAsync($"/api/cms/sources/{id}/generate",
+            new { model = "deepseek/deepseek-v3.2" });
+        Assert.Equal(HttpStatusCode.OK, generated.StatusCode);
+        Assert.Equal(1, (int)(await generated.Content.ReadFromJsonAsync<JsonNode>())!["created"]!);
+        Assert.Equal("deepseek/deepseek-v3.2", Assert.Single(generator.Prompts).Model);
+
+        var rejected = await client.PostAsJsonAsync($"/api/cms/sources/{id}/generate",
+            new { model = "untrusted/model" });
+        Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
+        Assert.Single(generator.Prompts);
+    }
+
+    [Fact]
     public async Task Only_methodologist_can_access_sources_and_generation()
     {
         await using var factory = new TripApiFactory();
