@@ -13,10 +13,10 @@ public sealed record ShiftStateView(
     public static ShiftStateView Of(SwipeShiftRecord record, ShiftPlay play, IReadOnlyList<CycleResultView> previousCycles)
     {
         var running = play.Status == ShiftStatus.Running;
-        var cycle = record.Cycle is { } number
+        var cycle = play.Cycle is { } number
             ? new CycleInfoView(number, ShiftTiming.Cycles.Select(c => c.TimeLimitMs).ToList(), previousCycles)
             : null;
-        var card = running && record.CardShownAt is not null ? ShiftCardView.Of(play.Current!, record.Cycle) : null;
+        var card = running && record.CardShownAt is not null ? ShiftCardView.Of(play.Current!, play.Cycle) : null;
         return new ShiftStateView(
             record.Id, play.Mode, cycle, play.Status,
             play.ScaleDefinitions
@@ -45,7 +45,7 @@ public sealed record ShiftCardView(
         return new ShiftCardView(
             question.Id, question.Statement, question.Options.Right.Label, question.Options.Left.Label, question.Topic,
             question.ServiceClasses, card.IsRepeat, ShiftTiming.ReadingMs(question.Statement, cycle),
-            ShiftTiming.Of(cycle)?.TimeLimitMs);
+            ShiftTiming.ForCycle(cycle)?.TimeLimitMs);
     }
 }
 

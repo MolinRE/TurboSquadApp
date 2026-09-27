@@ -31,6 +31,9 @@ public enum SwipeSide
 public sealed record SwipeOptions(SwipeSideOption Right, SwipeSideOption Left, SwipeSide Correct)
 {
     public SwipeSideOption Side(SwipeSide side) => side == SwipeSide.Right ? Right : Left;
+
+    [JsonIgnore]
+    public SwipeSideOption Wrong => Correct == SwipeSide.Right ? Left : Right;
 }
 
 /// <summary>Сторона свайпа: подпись и изменения Шкал по коду Шкалы.</summary>

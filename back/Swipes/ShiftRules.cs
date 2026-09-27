@@ -68,19 +68,23 @@ public static class ShiftTiming
     public const int DeckSize = 10;
     public const int CalmTypingMsPerChar = 35;
 
+    /// <summary>Допуск на сеть, как у таймера Рейса: ответ позже лимита больше чем на секунду — «Время вышло».</summary>
+    public const int TimeoutToleranceMs = 1000;
+
     public static readonly IReadOnlyList<CycleTiming> Cycles = [new(10_000, 35), new(7_000, 21), new(5_000, 12)];
 
-    public static CycleTiming? Of(int? cycle) => cycle is { } number ? Cycles[number - 1] : null;
+    /// <summary>Лимит и темп Цикла; null — «В своём темпе».</summary>
+    public static CycleTiming? ForCycle(int? cycle) => cycle is { } number ? Cycles[number - 1] : null;
 
     /// <summary>Сколько печатается формулировка: варианты появляются и время ответа идёт после неё.</summary>
     public static int ReadingMs(string statement, int? cycle) =>
-        statement.Length * (Of(cycle)?.TypingMsPerChar ?? CalmTypingMsPerChar);
+        statement.Length * (ForCycle(cycle)?.TypingMsPerChar ?? CalmTypingMsPerChar);
 }
 
 /// <summary>
 /// Правила Смены на свайпах — те же, что у подменного модуля экрана (front/src/lib/swipes/fake-api.ts, #26):
-/// очередь карточек с Повторами, Шкалы с обрезкой по границам и Срывом, итог. Без базы, HTTP и часов:
-/// состояние выводится проигрыванием ответов по порядку, как журнал Рейса.
+/// очередь карточек с Повторами, Шкалы с обрезкой по границам и Срывом по обязательной Шкале, как у Рейса, итог.
+/// Без базы, HTTP и часов: состояние выводится проигрыванием записанных ответов по порядку, как журнал Рейса.
 /// </summary>
 public sealed class ShiftPlay
 {
@@ -94,16 +98,18 @@ public sealed class ShiftPlay
     private readonly Dictionary<string, int> _scales;
     private readonly List<SettledAnswer> _answers = [];
 
-    public ShiftPlay(ShiftMode mode, IReadOnlyList<ShiftQuestion> deck, IReadOnlyList<ScaleDefinition> scales)
+    /// <param name="cycle">Номер Цикла «На скорость», с 1; null — «В своём темпе».</param>
+    public ShiftPlay(int? cycle, IReadOnlyList<ShiftQuestion> deck, IReadOnlyList<ScaleDefinition> scales)
     {
-        Mode = mode;
+        Cycle = cycle;
         Deck = deck;
         ScaleDefinitions = scales;
         _queue = deck.Select(question => new QueuedCard(question, 0)).ToList();
         _scales = scales.ToDictionary(scale => scale.Code, scale => scale.Start);
     }
 
-    public ShiftMode Mode { get; }
+    public int? Cycle { get; }
+    public ShiftMode Mode => Cycle is null ? ShiftMode.Calm : ShiftMode.Woodpecker;
     public IReadOnlyList<ShiftQuestion> Deck { get; }
     public IReadOnlyList<ScaleDefinition> ScaleDefinitions { get; }
     public IReadOnlyDictionary<string, int> Scales => _scales;
@@ -134,15 +140,33 @@ public sealed class ShiftPlay
         ? null
         : (int)Math.Round(_answers.Average(answer => answer.ElapsedMs), MidpointRounding.AwayFromZero);
 
-    /// <summary>Засчитывает ответ на текущую карточку: Шкалы, Повтор, Срыв или конец Смены.</summary>
+    /// <summary>Засчитывает ответ на текущую карточку по Вопросу: вердикт, Шкалы, Повтор, Срыв или конец Смены.</summary>
     public SettledAnswer Settle(SwipeAnswer answer, bool timedOut, int elapsedMs)
     {
         var card = Current ?? throw new InvalidOperationException("Смена уже закончена");
         var options = card.Question.Options;
         var verdict = answer == SwipeAnswer.Unknown ? Verdict.Unknown
             : SideOf(answer) == options.Correct ? Verdict.Correct : Verdict.Wrong;
-        var settled = new SettledAnswer(
-            card.Question, answer, timedOut, verdict, card.IsRepeat, elapsedMs, ApplyDeltas(DeltasOf(options, answer)));
+        return Record(new SettledAnswer(
+            card.Question, answer, timedOut, verdict, card.IsRepeat, elapsedMs, ApplyDeltas(DeltasOf(options, answer))));
+    }
+
+    /// <summary>
+    /// Проигрывает записанный ответ: вердикт и фактические изменения Шкал берутся из записи, а не пересчитываются
+    /// по Вопросу, поэтому правка Вопроса не переписывает прошлые Смены.
+    /// </summary>
+    public SettledAnswer Replay(
+        SwipeAnswer answer, bool timedOut, Verdict verdict, int elapsedMs, IReadOnlyDictionary<string, int> scaleChanges)
+    {
+        var card = Current ?? throw new InvalidOperationException("Смена уже закончена");
+        foreach (var (code, change) in scaleChanges) _scales[code] += change;
+        return Record(new SettledAnswer(card.Question, answer, timedOut, verdict, card.IsRepeat, elapsedMs, scaleChanges));
+    }
+
+    private SettledAnswer Record(SettledAnswer settled)
+    {
+        var card = _queue[0];
+        var verdict = settled.Verdict;
         _answers.Add(settled);
 
         _queue.RemoveAt(0);
@@ -172,8 +196,7 @@ public sealed class ShiftPlay
     private static IReadOnlyDictionary<string, int> DeltasOf(SwipeOptions options, SwipeAnswer answer)
     {
         if (answer != SwipeAnswer.Unknown) return options.Side(SideOf(answer)).ScaleDeltas;
-        var wrongSide = options.Side(options.Correct == SwipeSide.Right ? SwipeSide.Left : SwipeSide.Right);
-        return wrongSide.ScaleDeltas
+        return options.Wrong.ScaleDeltas
             .Where(delta => delta.Value < 0)
             .ToDictionary(delta => delta.Key, delta => delta.Value / 2);   // деление int округляет к нулю
     }

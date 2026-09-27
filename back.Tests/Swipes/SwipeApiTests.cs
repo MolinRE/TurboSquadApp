@@ -390,13 +390,64 @@ public class SwipeDeckTests(TripApiFactory factory) : IClassFixture<TripApiFacto
         Assert.Equal(["unknown"], shift.Verdicts);
     }
 
+    [Fact]
+    public async Task Next_cycle_and_work_on_mistakes_leave_out_questions_turned_into_drafts()
+    {
+        await PublishOnly("sw-pet-carrier", "sw-wait-first", "sw-vape");
+        var shift = await SwipeApiTests.ShiftClient.Start(factory, "calm");
+        await shift.Play((card, _) => "unknown");
+        Assert.Equal(3, shift.Json["result"]!["mistakes"]!.AsArray().Count);
+
+        await PublishOnly("sw-pet-carrier", "sw-vape");                   // «sw-wait-first» снят в Черновик
+        var work = new SwipeApiTests.ShiftClient(shift.Http, await shift.Post($"/api/swipe-shifts/{shift.Id}/work-on-mistakes", new { }));
+        Assert.Equal(2, work.Total);
+        await work.Play((card, _) => SwipeApiTests.Correct(card));
+        Assert.Equal(["sw-pet-carrier", "sw-vape"], work.Shown.Order());
+
+        await PublishOnly("sw-pet-carrier", "sw-wait-first", "sw-vape");
+        var cycle1 = await SwipeApiTests.ShiftClient.Start(factory, "woodpecker");
+        await cycle1.Play((card, _) => SwipeApiTests.Correct(card));
+        await PublishOnly("sw-vape");
+        var cycle2 = new SwipeApiTests.ShiftClient(cycle1.Http, await cycle1.Post($"/api/swipe-shifts/{cycle1.Id}/next-cycle", new { }));
+        Assert.Equal(("sw-vape", 1), (cycle2.CardId, cycle2.Total));
+    }
+
     private static List<string> ScaleChanges(JsonNode outcome) =>
         outcome["scaleChanges"]!.AsObject().Select(change => $"{change.Key}:{(int)change.Value!}").Order().ToList();
 
-    private Task PublishOnly(params string[] questionIds) => factory.Database(async db =>
+    private Task PublishOnly(params string[] questionIds) => PublishOnly(factory, questionIds);
+
+    internal static Task PublishOnly(TripApiFactory factory, params string[] questionIds) => factory.Database(async db =>
     {
         foreach (var question in await db.Questions.ToListAsync())
             question.Status = questionIds.Contains(question.Id) ? QuestionStatuses.Published : QuestionStatuses.Draft;
         return await db.SaveChangesAsync();
     });
+}
+
+// Своя база: тест правит Вопрос, другим тестам это бы помешало.
+public class SwipeHistoryTests(TripApiFactory factory) : IClassFixture<TripApiFactory>
+{
+    [Fact]
+    public async Task Finished_shift_keeps_its_history_when_question_is_edited_later()
+    {
+        await SwipeDeckTests.PublishOnly(factory, "sw-pet-carrier");
+        var shift = await SwipeApiTests.ShiftClient.Start(factory, "calm");
+        await shift.Answer("left");                                        // верно: безопасность +5
+        Assert.Equal("passed", shift.Status);
+
+        // Методист меняет верную сторону: прошлая Смена проигрывается по записанным вердиктам и изменениям Шкал.
+        await factory.Database(async db =>
+        {
+            var question = await db.Questions.SingleAsync(q => q.Id == "sw-pet-carrier");
+            var options = JsonNode.Parse(question.Options)!;
+            options["correct"] = "right";
+            question.Options = options.ToJsonString();
+            return await db.SaveChangesAsync();
+        });
+
+        var state = await shift.Get();
+        Assert.Equal(("passed", 1, 75), (shift.Status, (int)state["result"]!["firstTryCorrect"]!, shift.Scale("safety")));
+        Assert.Equal(["correct"], shift.Verdicts);
+    }
 }

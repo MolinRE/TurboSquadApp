@@ -66,7 +66,7 @@ public static class SwipeEndpoints
             .Produces<ShiftStateView>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status409Conflict)
             .Produces(StatusCodes.Status404NotFound)
-            .WithName("StartWorkOnMistakes")
+            .WithName("StartSwipeWorkOnMistakes")
             .WithSummary("Работа над ошибками")
             .WithDescription("Новая Смена «В своём темпе» только из Вопросов, на которые в законченной Смене была ошибка или «Не знаю», в том числе после Срыва. Шкалы — с начала.");
 

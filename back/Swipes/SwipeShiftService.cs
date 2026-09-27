@@ -3,7 +3,6 @@ using Microsoft.EntityFrameworkCore;
 using TurboSquadApp.Data;
 using TurboSquadApp.Events;
 using TurboSquadApp.Questions;
-using TurboSquadApp.Trips;
 
 namespace TurboSquadApp.Swipes;
 
@@ -14,7 +13,8 @@ namespace TurboSquadApp.Swipes;
 /// </summary>
 public sealed class SwipeShiftService(AppDbContext dbContext, TimeProvider clock, Random random)
 {
-    private static readonly JsonSerializerOptions SnapshotJson = JsonSerializerOptions.Web;
+    /// <summary>JSON колонок jsonb Смены и ответов: колода, снимок Шкал, изменения Шкал.</summary>
+    private static readonly JsonSerializerOptions ColumnJson = JsonSerializerOptions.Web;
 
     /// <summary>Как в записи ответа отмечено «Время вышло».</summary>
     private const string TimedOutAnswer = "timeout";
@@ -22,15 +22,12 @@ public sealed class SwipeShiftService(AppDbContext dbContext, TimeProvider clock
     public async Task<IResult> StartAsync(Guid userId, ShiftMode mode, CancellationToken cancellationToken)
     {
         var published = await dbContext.Questions
-            .Where(q => q.Type == QuestionTypes.Swipe && q.Status == QuestionStatuses.Published)
+            .Where(q => q.Type == QuestionTypes.Swipe)
             .OrderBy(q => q.Id)
             .Select(q => q.Id)
             .ToArrayAsync(cancellationToken);
-        if (published.Length == 0) return Rejected("NoPublishedQuestions", "Нет опубликованных Вопросов-свайпов");
-
         random.Shuffle(published);
-        return await CreateAsync(userId, mode, mode == ShiftMode.Woodpecker ? 1 : null, null,
-            published.Take(ShiftTiming.DeckSize).ToList(), cancellationToken);
+        return await CreateAsync(userId, mode == ShiftMode.Woodpecker ? 1 : null, null, published, cancellationToken);
     }
 
     public async Task<IResult> GetAsync(Guid userId, Guid shiftId, CancellationToken cancellationToken)
@@ -64,7 +61,7 @@ public sealed class SwipeShiftService(AppDbContext dbContext, TimeProvider clock
 
         // Ответ позже лимита больше чем на допуск сети — «Время вышло», как у таймера Рейса.
         var elapsedMs = ElapsedMs(record, play, answeredAt);
-        if (TimeLimitMs(record) is { } limitMs && elapsedMs > limitMs + TimeoutToleranceMs)
+        if (TimeLimitMs(play) is { } limitMs && elapsedMs > limitMs + ShiftTiming.TimeoutToleranceMs)
             return await SettleAsync(record, play, SwipeAnswer.Unknown, timedOut: true, limitMs, answeredAt, cancellationToken);
         return await SettleAsync(record, play, answer, timedOut: false, elapsedMs, answeredAt, cancellationToken);
     }
@@ -79,8 +76,8 @@ public sealed class SwipeShiftService(AppDbContext dbContext, TimeProvider clock
         if (await LoadAsync(userId, shiftId, cancellationToken) is not { } shift) return Results.NotFound();
         var (record, play) = shift;
         if (RejectAnswer(record, play, questionId) is { } rejection) return rejection;
-        if (TimeLimitMs(record) is not { } limitMs) return Rejected("NoTimeLimit", "«В своём темпе» лимита на карточку нет");
-        if (ElapsedMs(record, play, answeredAt) < limitMs - TimeoutToleranceMs)
+        if (TimeLimitMs(play) is not { } limitMs) return Rejected("NoTimeLimit", "«В своём темпе» лимита на карточку нет");
+        if (ElapsedMs(record, play, answeredAt) < limitMs - ShiftTiming.TimeoutToleranceMs)
             return Rejected("TimeNotExpired", "Время на карточку ещё не вышло");
         return await SettleAsync(record, play, SwipeAnswer.Unknown, timedOut: true, limitMs, answeredAt, cancellationToken);
     }
@@ -90,12 +87,12 @@ public sealed class SwipeShiftService(AppDbContext dbContext, TimeProvider clock
     {
         if (await LoadAsync(userId, shiftId, cancellationToken) is not { } shift) return Results.NotFound();
         var (record, play) = shift;
-        if (record.Cycle is not { } cycle || play.Status == ShiftStatus.Running || cycle >= ShiftTiming.Cycles.Count)
+        if (play.Cycle is not { } cycle || play.Status == ShiftStatus.Running || cycle >= ShiftTiming.Cycles.Count)
             return Rejected("NoNextCycle", "Следующий Цикл — после законченного Цикла «На скорость», кроме последнего");
 
         var deck = play.Deck.Select(question => question.Id).ToArray();
         random.Shuffle(deck);
-        return await CreateAsync(userId, ShiftMode.Woodpecker, cycle + 1, record.Id, deck, cancellationToken);
+        return await CreateAsync(userId, cycle + 1, record.Id, deck, cancellationToken);
     }
 
     /// <summary>Работа над ошибками: новая Смена «В своём темпе» из Вопросов с ошибкой или «Не знаю», в том числе после Срыва.</summary>
@@ -108,7 +105,7 @@ public sealed class SwipeShiftService(AppDbContext dbContext, TimeProvider clock
 
         var deck = play.Mistakes.Select(question => question.Id).ToArray();
         random.Shuffle(deck);
-        return await CreateAsync(userId, ShiftMode.Calm, null, null, deck, cancellationToken);
+        return await CreateAsync(userId, null, null, deck, cancellationToken);
     }
 
     private static IResult? RejectAnswer(SwipeShiftRecord record, ShiftPlay play, string questionId)
@@ -119,14 +116,12 @@ public sealed class SwipeShiftService(AppDbContext dbContext, TimeProvider clock
         return null;
     }
 
-    private static readonly int TimeoutToleranceMs = (int)TripService.TimerTolerance.TotalMilliseconds;
-
-    private static int? TimeLimitMs(SwipeShiftRecord record) => ShiftTiming.Of(record.Cycle)?.TimeLimitMs;
+    private static int? TimeLimitMs(ShiftPlay play) => ShiftTiming.ForCycle(play.Cycle)?.TimeLimitMs;
 
     /// <summary>Время ответа — от конца печати формулировки: длинный Вопрос не даёт форы короткому.</summary>
     private static int ElapsedMs(SwipeShiftRecord record, ShiftPlay play, DateTimeOffset answeredAt)
     {
-        var readingMs = ShiftTiming.ReadingMs(play.Current!.Question.Statement, record.Cycle);
+        var readingMs = ShiftTiming.ReadingMs(play.Current!.Question.Statement, play.Cycle);
         return Math.Max(0, (int)(answeredAt - record.CardShownAt!.Value).TotalMilliseconds - readingMs);
     }
 
@@ -139,7 +134,7 @@ public sealed class SwipeShiftService(AppDbContext dbContext, TimeProvider clock
         {
             ShiftId = record.Id, Seq = play.Answers.Count, QuestionId = settled.Question.Id,
             Answer = timedOut ? TimedOutAnswer : Code(answer), Verdict = Code(settled.Verdict), IsRepeat = settled.IsRepeat,
-            ElapsedMs = elapsedMs, ScaleChanges = JsonSerializer.Serialize(settled.ScaleChanges, SnapshotJson), AnsweredAt = now,
+            ElapsedMs = elapsedMs, ScaleChanges = JsonSerializer.Serialize(settled.ScaleChanges, ColumnJson), AnsweredAt = now,
         });
         record.CardShownAt = null;
         record.Status = Code(play.Status);
@@ -152,20 +147,31 @@ public sealed class SwipeShiftService(AppDbContext dbContext, TimeProvider clock
             elapsedMs, timedOut, await ViewAsync(record, play, cancellationToken)));
     }
 
-    /// <summary>Новая Смена: первая карточка показана сразу, Шкалы — с начала по текущему справочнику.</summary>
+    /// <summary>
+    /// Новая Смена: из колоды остаются только опубликованные Вопросы, не больше DeckSize; первая карточка
+    /// показана сразу, Шкалы — с начала по текущему справочнику.
+    /// </summary>
+    /// <param name="cycle">Номер Цикла «На скорость»; null — «В своём темпе».</param>
     private async Task<IResult> CreateAsync(
-        Guid userId, ShiftMode mode, int? cycle, Guid? previousCycleId, IReadOnlyList<string> deck,
-        CancellationToken cancellationToken)
+        Guid userId, int? cycle, Guid? previousCycleId, IReadOnlyList<string> candidates, CancellationToken cancellationToken)
     {
+        var published = await dbContext.Questions
+            .Where(q => candidates.Contains(q.Id) && q.Status == QuestionStatuses.Published)
+            .Select(q => q.Id)
+            .ToListAsync(cancellationToken);
+        var deck = candidates.Where(published.Contains).Take(ShiftTiming.DeckSize).ToList();
+        if (deck.Count == 0) return Rejected("NoPublishedQuestions", "В колоду некого взять: нет опубликованных Вопросов");
+
         var scales = await dbContext.Scales.OrderBy(s => s.Code)
             .Select(s => new ScaleDefinition(s.Code, s.Name, s.Min, s.Max, s.Start, s.FailureThreshold, s.Mandatory, s.FailureReason))
             .ToListAsync(cancellationToken);
         var now = clock.GetUtcNow();
         var record = new SwipeShiftRecord
         {
-            Id = Guid.NewGuid(), UserId = userId, Mode = Code(mode), Cycle = cycle, PreviousCycleId = previousCycleId,
-            Status = Code(ShiftStatus.Running), Deck = JsonSerializer.Serialize(deck, SnapshotJson),
-            Scales = JsonSerializer.Serialize(scales, SnapshotJson), StartedAt = now, CardShownAt = now,
+            Id = Guid.NewGuid(), UserId = userId, Mode = Code(cycle is null ? ShiftMode.Calm : ShiftMode.Woodpecker),
+            Cycle = cycle, PreviousCycleId = previousCycleId,
+            Status = Code(ShiftStatus.Running), Deck = JsonSerializer.Serialize(deck, ColumnJson),
+            Scales = JsonSerializer.Serialize(scales, ColumnJson), StartedAt = now, CardShownAt = now,
         };
         dbContext.SwipeShifts.Add(record);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -197,16 +203,14 @@ public sealed class SwipeShiftService(AppDbContext dbContext, TimeProvider clock
         return record is null ? null : (record, await ReplayAsync(record, cancellationToken));
     }
 
-    /// <summary>Проигрывает записанные ответы Смены на её колоде и снимке Шкал.</summary>
+    /// <summary>Проигрывает записанные ответы Смены — их вердикты и изменения Шкал — на её колоде и снимке Шкал.</summary>
     private async Task<ShiftPlay> ReplayAsync(SwipeShiftRecord record, CancellationToken cancellationToken)
     {
-        var deckIds = JsonSerializer.Deserialize<List<string>>(record.Deck, SnapshotJson)!;
+        var deckIds = JsonSerializer.Deserialize<List<string>>(record.Deck, ColumnJson)!;
         var questions = await dbContext.Questions.Where(q => deckIds.Contains(q.Id)).ToListAsync(cancellationToken);
         var classNames = await dbContext.ServiceClasses.ToDictionaryAsync(c => c.Code, c => c.Name, cancellationToken);
         var deck = deckIds.Select(id => ShiftQuestionOf(questions.Single(q => q.Id == id), classNames)).ToList();
-        var play = new ShiftPlay(
-            Enum.Parse<ShiftMode>(record.Mode, ignoreCase: true), deck,
-            JsonSerializer.Deserialize<List<ScaleDefinition>>(record.Scales, SnapshotJson)!);
+        var play = new ShiftPlay(record.Cycle, deck, JsonSerializer.Deserialize<List<ScaleDefinition>>(record.Scales, ColumnJson)!);
 
         var answers = await dbContext.SwipeAnswers.Where(a => a.ShiftId == record.Id).OrderBy(a => a.Seq).ToListAsync(cancellationToken);
         foreach (var row in answers)
@@ -214,7 +218,10 @@ public sealed class SwipeShiftService(AppDbContext dbContext, TimeProvider clock
             if (play.Current?.Question.Id != row.QuestionId)
                 throw new InvalidOperationException($"Ответы Смены {record.Id} не проигрываются: ответ {row.Seq} не на текущую карточку");
             var timedOut = row.Answer == TimedOutAnswer;
-            play.Settle(timedOut ? SwipeAnswer.Unknown : Enum.Parse<SwipeAnswer>(row.Answer, ignoreCase: true), timedOut, row.ElapsedMs);
+            play.Replay(
+                timedOut ? SwipeAnswer.Unknown : Enum.Parse<SwipeAnswer>(row.Answer, ignoreCase: true), timedOut,
+                Enum.Parse<Verdict>(row.Verdict, ignoreCase: true), row.ElapsedMs,
+                JsonSerializer.Deserialize<Dictionary<string, int>>(row.ScaleChanges, ColumnJson)!);
         }
         return play;
     }
