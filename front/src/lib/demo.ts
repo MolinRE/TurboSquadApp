@@ -1,5 +1,5 @@
-// Демо-аккаунты из PRD v7, §17. Пароли задаются в конфигурации бэкенда;
-// UI отправляет выбранный логин на общий endpoint авторизации.
+// Демо-аккаунты из PRD v7, §17. Кнопки «Войти как…» входят в них без пароля
+// через /api/auth/demo-login; пароли нужны бэкенду только при создании аккаунтов.
 
 export type DemoAccount = {
   id: string;
@@ -18,7 +18,7 @@ export const demoAccounts: DemoAccount[] = [
     label: "Проводник-отличник",
     name: "Марина Соколова",
     initials: "МС",
-    description: "Старший проводник · Бригада 3",
+    description: "Старший проводник · Бригада 1",
     href: "/home",
   },
   {
@@ -27,7 +27,7 @@ export const demoAccounts: DemoAccount[] = [
     label: "Проводник-новичок",
     name: "Игорь Лебедев",
     initials: "ИЛ",
-    description: "Стажёр · Бригада 1",
+    description: "Стажёр · Бригада 2",
     href: "/home",
   },
   {
@@ -36,20 +36,10 @@ export const demoAccounts: DemoAccount[] = [
     label: "Руководитель-методист",
     name: "Ольга Верещагина",
     initials: "ОВ",
-    description: "Аналитика и CMS · Депо Санкт-Петербург",
+    description: "Аналитика и CMS · Северное депо",
     href: "/analytics/blind-spots",
   },
 ];
 
-export const demoPlayer = {
-  name: "Марина Соколова",
-  initials: "МС",
-  unit: "Бригада 3 · Депо Санкт-Петербург",
-  unreadNotifications: 2,
-};
-
-export const demoManager = {
-  name: "Ольга Верещагина",
-  initials: "ОВ",
-  roles: "Руководитель · Методист",
-};
+/** Уведомлений в API пока нет: число в колокольчике шапки — демонстрационное. */
+export const demoUnreadNotifications = 2;
