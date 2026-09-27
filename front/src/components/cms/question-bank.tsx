@@ -60,6 +60,7 @@ export function QuestionBank() {
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [accessDenied, setAccessDenied] = useState(false);
 
   useEffect(() => {
     Promise.all([listQuestions(), getQuestionCatalog()])
@@ -69,6 +70,7 @@ export function QuestionBank() {
           window.localStorage.removeItem("turbo.accessToken");
           router.push("/login");
         }
+        if (reason instanceof ApiError && reason.status === 403) setAccessDenied(true);
         setMessage(errorMessage(reason));
       })
       .finally(() => setLoading(false));
@@ -100,6 +102,7 @@ export function QuestionBank() {
           window.localStorage.removeItem("turbo.accessToken");
           router.push("/login");
         }
+        if (reason instanceof ApiError && reason.status === 403) setAccessDenied(true);
         setMessage(errorMessage(reason));
       }
     }
@@ -175,6 +178,8 @@ export function QuestionBank() {
     ? form.options as { right: { label: string; scaleDeltas: Record<string, number> }; left: { label: string; scaleDeltas: Record<string, number> }; correct: "right" | "left" }
     : null;
 
+  if (accessDenied) return <p role="alert" className="rounded-lg bg-danger-soft p-4 text-danger">Для банка Вопросов нужна роль Методиста.</p>;
+
   return <div className="space-y-5">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div><h1 className="text-2xl font-bold">Банк Вопросов</h1><p className="text-sm text-muted-foreground">Общий контент для Смены на свайпах и Блица</p></div>
@@ -237,7 +242,7 @@ export function QuestionBank() {
                   <Input aria-label={`Текст варианта ${index + 1}`} value={option.text} onChange={(event) => changeOptions({ options: choiceOptions.map((item, at) => at === index ? { ...item, text: event.target.value } : item) })} />
                   <label className="flex items-center gap-1 text-xs"><input type={form.type === "single" ? "radio" : "checkbox"} name="correct-choice" checked={option.correct} onChange={(event) => changeOptions({ options: choiceOptions.map((item, at) => ({ ...item, correct: form.type === "single" ? at === index : at === index ? event.target.checked : item.correct })) })} />Верный</label>
                   <Button variant="ghost" size="icon" aria-label={`Удалить вариант ${index + 1}`} onClick={() => changeOptions({ options: choiceOptions.filter((_, at) => at !== index) })}><Trash2 aria-hidden /></Button>
-                  {(issueAt(`options.options[${index}].id`) || issueAt(`options.options[${index}].text`)) && <p className="col-span-4 text-xs text-danger">{issueAt(`options.options[${index}].id`)} {issueAt(`options.options[${index}].text`)}</p>}
+                  {(issueAt(`options.options[${index}].id`) || issueAt(`options.options[${index}].text`) || issueAt(`options.options[${index}].correct`)) && <p className="col-span-4 text-xs text-danger">{issueAt(`options.options[${index}].id`)} {issueAt(`options.options[${index}].text`)} {issueAt(`options.options[${index}].correct`)}</p>}
                 </div>)}
                 <Button variant="outline" onClick={() => changeOptions({ options: [...choiceOptions, { id: `v${choiceOptions.length + 1}`, text: "", correct: false }] })}><Plus aria-hidden />Добавить вариант</Button>
                 {issueAt("options.options") && <p className="text-xs text-danger">{issueAt("options.options")}</p>}

@@ -100,6 +100,8 @@ public sealed class QuestionBankService(AppDbContext db)
         var record = await db.Questions.SingleOrDefaultAsync(q => q.Id == id, cancellationToken);
         if (record is null) return Results.NotFound();
         if (!KnownType(input.Type)) return InvalidType();
+        if (record.Type != input.Type && await UsedInSwipeHistoryAsync(id, cancellationToken))
+            return Results.Conflict(new { message = "Нельзя изменить тип Вопроса, который есть в Смене" });
 
         var candidate = new QuestionRecord { Id = id, Status = record.Status };
         Apply(candidate, input);
@@ -139,13 +141,8 @@ public sealed class QuestionBankService(AppDbContext db)
         if (record.Status != QuestionStatuses.Draft)
             return Results.Conflict(new { message = "Сначала снимите Вопрос с публикации" });
 
-        var used = await db.SwipeAnswers.AnyAsync(answer => answer.QuestionId == id, cancellationToken);
-        if (!used)
-        {
-            var decks = await db.SwipeShifts.Select(shift => shift.Deck).ToListAsync(cancellationToken);
-            used = decks.Any(deck => (JsonSerializer.Deserialize<List<string>>(deck) ?? []).Contains(id));
-        }
-        if (used) return Results.Conflict(new { message = "Вопрос есть в прошлой Смене и не может быть удалён" });
+        if (await UsedInSwipeHistoryAsync(id, cancellationToken))
+            return Results.Conflict(new { message = "Вопрос есть в прошлой Смене и не может быть удалён" });
 
         db.Questions.Remove(record);
         await db.SaveChangesAsync(cancellationToken);
@@ -160,6 +157,13 @@ public sealed class QuestionBankService(AppDbContext db)
         var classes = await db.ServiceClasses.Select(serviceClass => new ServiceClass(
             serviceClass.Code, serviceClass.Name, serviceClass.Description)).ToListAsync(cancellationToken);
         return QuestionValidator.ValidateForPublication(record, new ContentDirectory(scales, classes));
+    }
+
+    private async Task<bool> UsedInSwipeHistoryAsync(string id, CancellationToken cancellationToken)
+    {
+        if (await db.SwipeAnswers.AnyAsync(answer => answer.QuestionId == id, cancellationToken)) return true;
+        var decks = await db.SwipeShifts.Select(shift => shift.Deck).ToListAsync(cancellationToken);
+        return decks.Any(deck => (JsonSerializer.Deserialize<List<string>>(deck) ?? []).Contains(id));
     }
 
     private static void Apply(QuestionRecord record, QuestionEditorInput input)

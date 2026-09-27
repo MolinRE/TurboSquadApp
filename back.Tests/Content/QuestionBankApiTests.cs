@@ -80,6 +80,8 @@ public class QuestionBankApiTests(TripApiFactory factory) : IClassFixture<TripAp
         using var conductor = await factory.CreateConductorClient();
         Assert.Equal(HttpStatusCode.Forbidden, (await conductor.GetAsync("/api/cms/questions")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await conductor.PostAsJsonAsync("/api/cms/questions", new { type = "single" })).StatusCode);
+        using var manager = await factory.CreateManagerClient();
+        Assert.Equal(HttpStatusCode.Forbidden, (await manager.PostAsJsonAsync("/api/cms/questions", new { type = "single" })).StatusCode);
     }
 
     [Fact]
@@ -142,7 +144,11 @@ public class QuestionBankApiTests(TripApiFactory factory) : IClassFixture<TripAp
         var shift = (await first.Content.ReadFromJsonAsync<JsonNode>())!;
         Assert.Equal(id, (string)shift["card"]!["questionId"]!);
 
+        var changeType = await methodologist.PutAsJsonAsync($"/api/cms/questions/{id}", SingleQuestion());
+        Assert.Equal(HttpStatusCode.Conflict, changeType.StatusCode);
+
         Assert.Equal(HttpStatusCode.OK, (await methodologist.PostAsync($"/api/cms/questions/{id}/unpublish", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await methodologist.PutAsJsonAsync($"/api/cms/questions/{id}", SingleQuestion())).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await conductor.GetAsync($"/api/swipe-shifts/{(string)shift["shiftId"]!}")).StatusCode);
         var next = await conductor.PostAsJsonAsync("/api/swipe-shifts", new { mode = "calm" });
         Assert.Equal(HttpStatusCode.Conflict, next.StatusCode);
