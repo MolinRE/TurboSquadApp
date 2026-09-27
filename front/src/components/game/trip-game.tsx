@@ -250,7 +250,10 @@ export function TripGame() {
             {debriefError && <p role="alert" className="text-sm text-danger">Разбор не загрузился: {debriefError}</p>}
             {debrief && <TripDebriefFacts debrief={debrief} />}
             {debrief && <Button asChild variant="outline"><Link href={`/reviews/trip-${trip.id}`}>Открыть Разбор</Link></Button>}
-            <Button variant="outline" onClick={reset}>Новый Рейс</Button>
+            <div className="grid grid-cols-2 gap-2">
+              <Button variant="outline" onClick={reset}>Новый Рейс</Button>
+              <Button asChild variant="outline"><Link href="/games">К играм</Link></Button>
+            </div>
           </CardContent>
         </Card>
       ) : trip.proactiveChoice ? (

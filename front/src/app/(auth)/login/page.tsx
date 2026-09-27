@@ -24,7 +24,7 @@ export default function Page() {
     try {
       await login(String(form.get("username")), String(form.get("password")));
       const user = await getCurrentUser();
-      window.location.assign(user.roles.includes("manager") ? "/analytics/blind-spots" : "/home");
+      window.location.assign(user.roles.includes("manager") ? "/analytics/voice" : "/home");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не удалось войти");
       setEntering(null);
