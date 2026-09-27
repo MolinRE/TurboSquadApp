@@ -90,6 +90,13 @@ app.UseCors("Frontend");
 app.UseAuthentication();
 app.UseAuthorization();
 
+// Compose applies committed EF Core migrations before startup seeders use the tables.
+if (app.Configuration.GetValue("Database:MigrateOnStartup", false))
+{
+    await using var scope = app.Services.CreateAsyncScope();
+    await scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.MigrateAsync();
+}
+
 // Стартовый контент Рейса (справочники, Заступ, №6, №33): добавляется только недостающее.
 if (app.Configuration.GetValue("ContentSeed:SeedOnStartup", true))
 {
