@@ -14,9 +14,11 @@ import type {
   CycleInfo,
   ShiftCard,
   ShiftMode,
+  ShiftRejection,
   ShiftState,
   SwipeAnswer,
 } from "@/lib/swipes/contract";
+import { forgetShift, noSubscription, saveShift, savedShift } from "@/lib/swipes/saved-shift";
 import { DeckProgress } from "./deck-progress";
 import { ExplanationText, SourceLine, VerdictLabel } from "./explanation";
 import { formatSeconds } from "./format";
@@ -28,15 +30,15 @@ import { useSwipeDrag } from "./use-swipe-drag";
 /** Пауза после верного ответа: успеть взглянуть на Вопрос и Пояснение. В Циклах 2–3 её нет. */
 const CORRECT_PAUSE_MS = 2500;
 const GESTURE_HINT_KEY = "turbo-brigada:swipes:gesture-hint-seen";
-/** Незаконченная Смена этого браузера: после перезагрузки экран продолжает её. */
-const SHIFT_KEY = "turbo-brigada:swipes:shift";
 /** Меньше этой высоты фон-подсказка не помещается целиком и не показывается. */
 const HINT_MIN_HEIGHT = 128;
 /**
  * Отказы 409, после которых ответ уже засчитан или Смена ушла дальше: например, первый ответ
  * дошёл до сервера, а его результат потерялся в сети. Экран берёт состояние с сервера.
  */
-const SETTLED_REASONS = ["StaleCard", "CardNotShown", "ShiftNotRunning"];
+const SETTLED_REJECTIONS: ShiftRejection[] = ["StaleCard", "CardNotShown", "ShiftNotRunning"];
+const LOADING_DECK = "Собираем колоду…";
+const RESUMING = "Возвращаемся к Смене…";
 
 type Phase =
   /** Открыли экран: продолжаем незаконченную Смену этого браузера, если она есть, иначе выбор Режима. */
@@ -56,6 +58,9 @@ type LastAnswer = { card: ShiftCard; outcome: AnswerOutcome };
 
 /** Ответ на карточку; «Время вышло» — отдельная операция, засчитывается как «Не знаю». */
 type CardAnswer = SwipeAnswer | "timeOut";
+
+/** Ошибка действия; resend — ответ, который не дошёл до сервера: кнопка отправляет его ещё раз. */
+type ActionError = { message: string; resend: CardAnswer | null };
 
 /** Отметки performance.now(): отсчёт идёт от конца печати формулировки до ответа. */
 type Timing = { startedAt: number | null; stoppedAt: number | null };
@@ -79,7 +84,16 @@ function messageOf(error: unknown) {
 }
 
 function alreadySettled(error: unknown) {
-  return error instanceof ApiError && error.status === 409 && SETTLED_REASONS.includes(error.payload?.reason ?? "");
+  return (
+    error instanceof ApiError &&
+    error.status === 409 &&
+    SETTLED_REJECTIONS.some((reason) => reason === error.payload?.reason)
+  );
+}
+
+/** Смены нет или она чужая: например, в этом браузере потом входил другой проводник. */
+function shiftGone(error: unknown) {
+  return error instanceof ApiError && error.status === 404;
 }
 
 /** Показ жеста — один раз на браузер; если хранилище недоступно, не показываем. */
@@ -90,36 +104,6 @@ function takeGestureHint() {
     return true;
   } catch {
     return false;
-  }
-}
-
-/** Хранилище не сообщает о своих записях в той же вкладке, а после них экран и так перерисовывается. */
-function subscribeToStorage() {
-  return () => {};
-}
-
-function storedShift() {
-  try {
-    return localStorage.getItem(SHIFT_KEY);
-  } catch {
-    return null;
-  }
-}
-
-/** Без хранилища Смена просто не переживёт перезагрузку. */
-function rememberShift(shiftId: string) {
-  try {
-    localStorage.setItem(SHIFT_KEY, shiftId);
-  } catch {
-    // см. выше
-  }
-}
-
-function forgetShift() {
-  try {
-    localStorage.removeItem(SHIFT_KEY);
-  } catch {
-    // см. rememberShift
   }
 }
 
@@ -142,9 +126,7 @@ export function SwipeShift() {
   const [shift, setShift] = useState<ShiftState | null>(null);
   const [phase, setPhase] = useState<Phase>({ kind: "restoring" });
   const [last, setLast] = useState<LastAnswer | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-  /** Ответ, который не дошёл до сервера: кнопка отправляет его ещё раз. */
-  const [unsent, setUnsent] = useState<CardAnswer | null>(null);
+  const [actionError, setActionError] = useState<ActionError | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [timing, setTiming] = useState<Timing>(notStarted);
   /** Номер показа карточки: одна и та же карточка при Повторе — новый показ. */
@@ -152,7 +134,7 @@ export function SwipeShift() {
   /** Ответ в пути: второй свайп или нажатие до смены фазы не отправляет второй ответ. */
   const sending = useRef(false);
   /** Сохранённая незаконченная Смена; undefined — пока неизвестно (отрисовка на сервере). */
-  const savedShift = useSyncExternalStore(subscribeToStorage, storedShift, () => undefined);
+  const saved = useSyncExternalStore(noSubscription, savedShift, () => undefined);
 
   const ready = timing.startedAt !== null;
   const { drag, handlers, playDemo } = useSwipeDrag({
@@ -162,8 +144,13 @@ export function SwipeShift() {
 
   function clearMessages() {
     setActionError(null);
-    setUnsent(null);
     setNotice(null);
+  }
+
+  function showLoading(label: string) {
+    setPhase({ kind: "loading", label });
+    setLast(null);
+    clearMessages();
   }
 
   function showCard(state: ShiftState) {
@@ -181,12 +168,10 @@ export function SwipeShift() {
 
   /** Новая Смена: старт, следующий Цикл или Работа над ошибками. */
   function load(request: () => Promise<ShiftState>) {
-    setPhase({ kind: "loading", label: "Собираем колоду…" });
-    setLast(null);
-    clearMessages();
+    showLoading(LOADING_DECK);
     request().then(
       (state) => {
-        rememberShift(state.shiftId);
+        saveShift(state.shiftId);
         showCard(state);
       },
       (error) =>
@@ -198,17 +183,15 @@ export function SwipeShift() {
     );
   }
 
-  /** Продолжить Смену с сервера, например когда ответ уже засчитан. */
-  function resume(shiftId: string, note: string | null) {
-    setPhase({ kind: "loading", label: "Возвращаемся к Смене…" });
-    setLast(null);
-    clearMessages();
+  /** Экран загрузки и состояние Смены с сервера, например когда ответ уже засчитан. */
+  function resync(shiftId: string, note: string | null) {
+    showLoading(RESUMING);
     continueShift(shiftId, note);
   }
 
   /**
-   * Состояние Смены с сервера. Если ответ дан, а следующую карточку не просили, просит её:
-   * Пояснение к тому ответу уже не показать.
+   * Продолжает Смену по состоянию с сервера, не трогая экран до ответа. Если ответ дан, а
+   * следующую карточку не просили, просит её: Пояснение к тому ответу уже не показать.
    */
   function continueShift(shiftId: string, note: string | null) {
     swipesApi
@@ -221,27 +204,26 @@ export function SwipeShift() {
           else finish(state);
         },
         (error) => {
-          // Смены нет или она чужая (в браузере входил другой проводник): начинаем с выбора Режима.
-          if (error instanceof ApiError && error.status === 404) {
+          if (shiftGone(error)) {
             restart();
             return;
           }
           setPhase({
             kind: "loadFailed",
             message: `Не удалось вернуться к Смене: ${messageOf(error)}`,
-            retry: () => resume(shiftId, note),
+            retry: () => resync(shiftId, note),
           });
         },
       );
   }
 
-  const continueSaved = useEffectEvent((shiftId: string) => {
+  const continueSavedShift = useEffectEvent((shiftId: string) => {
     if (phase.kind === "restoring") continueShift(shiftId, null);
   });
 
   useEffect(() => {
-    if (savedShift) continueSaved(savedShift);
-  }, [savedShift]);
+    if (saved) continueSavedShift(saved);
+  }, [saved]);
 
   function choose(mode: ShiftMode) {
     load(() => swipesApi.startShift(mode));
@@ -290,15 +272,15 @@ export function SwipeShift() {
       const [outcome] = await Promise.all([send(shift.shiftId, card, answer), wait(SWIPE_EXIT_MS)]);
       setLast({ card, outcome });
       setShift(outcome.shift);
-      if (outcome.shift.status !== "running") forgetShift();
       if (skipsPause(shift, outcome)) advance(outcome.shift);
       else setPhase({ kind: "feedback" });
     } catch (error) {
-      if (alreadySettled(error)) {
-        resume(shift.shiftId, "Ответ на прошлую карточку уже был засчитан — продолжаем.");
+      if (shiftGone(error)) {
+        restart();
+      } else if (alreadySettled(error)) {
+        resync(shift.shiftId, "Ответ на прошлую карточку уже был засчитан — продолжаем.");
       } else {
-        setActionError(`Ответ не отправлен: ${messageOf(error)}.`);
-        setUnsent(answer);
+        setActionError({ message: `Ответ не отправлен: ${messageOf(error)}.`, resend: answer });
         setPhase({ kind: "playing" });
       }
     } finally {
@@ -317,13 +299,13 @@ export function SwipeShift() {
   /** Следующая карточка или итог, если Смена закончилась. */
   function advance(state: ShiftState) {
     if (state.status !== "running") {
-      setPhase({ kind: "finished" });
+      finish(state);
       return;
     }
     setPhase({ kind: "advancing" });
     setActionError(null);
     swipesApi.showNextCard(state.shiftId).then(showCard, (error) => {
-      setActionError(`Следующая карточка не пришла: ${messageOf(error)}. Попробуйте ещё раз.`);
+      setActionError({ message: `Следующая карточка не пришла: ${messageOf(error)}. Попробуйте ещё раз.`, resend: null });
       setPhase({ kind: "feedback" });
     });
   }
@@ -351,9 +333,9 @@ export function SwipeShift() {
   }, []);
 
   if (phase.kind === "restoring") {
-    if (savedShift === undefined) return null;
-    if (savedShift === null) return <ModeChoice onChoose={choose} />;
-    return <p className="m-auto text-sm text-muted-foreground">Возвращаемся к Смене…</p>;
+    if (saved === undefined) return null;
+    if (saved === null) return <ModeChoice onChoose={choose} />;
+    return <p className="m-auto text-sm text-muted-foreground">{RESUMING}</p>;
   }
 
   if (phase.kind === "choosing") return <ModeChoice onChoose={choose} />;
@@ -366,7 +348,7 @@ export function SwipeShift() {
         </p>
         <div className="flex flex-wrap justify-center gap-2">
           <Button onClick={phase.retry}>Попробовать снова</Button>
-          <Button variant="outline" onClick={restart}>
+          <Button variant="outline" onClick={restart} className="bg-card">
             Новая Смена
           </Button>
         </div>
@@ -377,7 +359,7 @@ export function SwipeShift() {
   if (phase.kind === "loading" || !shift) {
     return (
       <p className="m-auto text-sm text-muted-foreground">
-        {phase.kind === "loading" ? phase.label : "Собираем колоду…"}
+        {phase.kind === "loading" ? phase.label : LOADING_DECK}
       </p>
     );
   }
@@ -396,6 +378,7 @@ export function SwipeShift() {
   const showingFeedback = (phase.kind === "feedback" || phase.kind === "advancing") && last;
   const card = shift.card;
   const dragEnabled = phase.kind === "playing" && ready;
+  const resend = phase.kind === "playing" ? actionError?.resend : null;
 
   return (
     <div
@@ -452,9 +435,9 @@ export function SwipeShift() {
 
       {actionError ? (
         <div role="alert" className="flex flex-col items-start gap-2 text-sm">
-          <p className="text-danger">{actionError}</p>
-          {unsent && phase.kind === "playing" ? (
-            <Button variant="outline" onClick={() => void submit(unsent)} className="bg-card">
+          <p className="text-danger">{actionError.message}</p>
+          {resend ? (
+            <Button variant="outline" onClick={() => void submit(resend)} className="bg-card">
               Отправить ещё раз
             </Button>
           ) : null}
