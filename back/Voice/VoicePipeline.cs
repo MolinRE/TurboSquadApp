@@ -15,7 +15,14 @@ public sealed class VoiceOptions
     public string LayaEndpoint { get; init; } = "http://176.108.247.22:8000/v1/systemone";
     public string LayaToken { get; init; } = string.Empty;
     public string LayaModel { get; init; } = "multilingual";
+    /// <summary>Модель генерации Вопросов в CMS.</summary>
     public string LlmModel { get; init; } = "qwen/qwen3.6-35b-a3b";
+
+    /// <summary>
+    /// Модель реплики пассажира: открытая (Apache 2.0) и без рассуждений. qwen3.6-35b-a3b тратит
+    /// весь max_tokens на рассуждения и возвращает пустой текст, отключить их у polza.ai нельзя.
+    /// </summary>
+    public string PassengerReplyModel { get; init; } = "qwen/qwen3-next-80b-a3b-instruct";
     public string LlmReasoningEffort { get; init; } = "low";
     public int LlmMaxTokens { get; init; } = 256;
     public TimeSpan LlmTimeout { get; init; } = TimeSpan.FromSeconds(15);
@@ -36,6 +43,7 @@ public sealed class VoiceOptions
             ?? string.Empty,
         LayaModel = configuration["Voice:LayaModel"] ?? "multilingual",
         LlmModel = configuration["Voice:LlmModel"] ?? "qwen/qwen3.6-35b-a3b",
+        PassengerReplyModel = configuration["Voice:PassengerReplyModel"] ?? "qwen/qwen3-next-80b-a3b-instruct",
         LlmReasoningEffort = configuration["Voice:LlmReasoningEffort"] ?? "low",
         LlmMaxTokens = configuration.GetValue("Voice:LlmMaxTokens", 256),
         LlmTimeout = TimeSpan.FromSeconds(configuration.GetValue("Voice:LlmTimeoutSeconds", 15)),
@@ -413,7 +421,7 @@ public sealed class PolzaLlmClient(HttpClient httpClient, VoiceOptions options) 
 
         var payload = new
         {
-            model = options.LlmModel,
+            model = options.PassengerReplyModel,
             stream = true,
             reasoning = new { effort = options.LlmReasoningEffort },
             max_tokens = options.LlmMaxTokens,
