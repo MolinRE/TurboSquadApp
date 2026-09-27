@@ -65,6 +65,7 @@ builder.Services.AddScoped<TripService>();
 builder.Services.AddScoped<VoiceAnalyticsService>();
 builder.Services.AddScoped<SwipeShiftService>();
 builder.Services.AddScoped<QuestionBankService>();
+builder.Services.AddScoped<EventCmsService>();
 builder.Services.AddSingleton(Random.Shared);   // колода Смены на свайпах; в тестах — с зерном
 var voiceOptions = VoiceOptions.FromConfiguration(builder.Configuration);
 builder.Services.AddSingleton(voiceOptions);
@@ -233,6 +234,7 @@ app.MapTripEndpoints();
 app.MapAnalyticsEndpoints();
 app.MapSwipeEndpoints();
 app.MapQuestionBankEndpoints();
+app.MapEventCmsEndpoints();
 
 app.Run();
 
