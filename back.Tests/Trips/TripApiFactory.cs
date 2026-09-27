@@ -134,11 +134,13 @@ public sealed class FakeLlmClient : ILlmClient
     public bool Fail { get; set; }
     public bool Block { get; set; }
     public int Calls { get; private set; }
+    public ConcurrentQueue<LlmRequest> Requests { get; } = new();
 
     public async IAsyncEnumerable<LlmToken> StreamAsync(
         LlmRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         Calls++;
+        Requests.Enqueue(request);
         await Task.CompletedTask;
         if (Block)
         {

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
+using Microsoft.Extensions.Configuration;
 using TurboSquadApp.Voice;
 
 namespace TurboSquadApp.Tests.Voice;
@@ -32,6 +33,25 @@ public class VoiceClientTests
         Assert.Contains("name=model", capturedBody);
         Assert.Contains("ai-sage/gigaam-v3", capturedBody);
         Assert.Contains("name=language", capturedBody);
+    }
+
+    [Fact]
+    public void Default_laya_confidence_threshold_is_0_55()
+    {
+        Assert.Equal(0.55, new VoiceOptions().MinimumConfidence);
+        Assert.Equal(0.55, VoiceOptions.FromConfiguration(new ConfigurationBuilder().Build()).MinimumConfidence);
+    }
+
+    [Theory]
+    [InlineData(100, "доброжелательно")]
+    [InlineData(70, "доброжелательно")]
+    [InlineData(69, "раздражение")]
+    [InlineData(40, "раздражение")]
+    [InlineData(39, "резко")]
+    [InlineData(0, "резко")]
+    public void Passenger_tone_follows_loyalty(int loyalty, string expected)
+    {
+        Assert.Contains(expected, PassengerTone.For(loyalty));
     }
 
     [Fact]

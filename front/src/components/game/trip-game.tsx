@@ -280,8 +280,10 @@ function VoiceRecorder({
         void uploadVoice(trip.id, trip.step!.eventId, trip.step!.stepId, attemptId, blob)
           .then(onVoiceTrip)
           .catch((reason) => {
-            if (reason instanceof ApiError && reason.payload?.trip) void onVoiceTrip(reason.payload.trip);
-            onError(apiMessage(reason));
+            const failedTrip = reason instanceof ApiError ? reason.payload?.trip : undefined;
+            if (failedTrip) void onVoiceTrip(failedTrip);
+            // Низкая уверенность Laya — не ошибка: пассажир переспросит, и проводник ответит снова.
+            if (!failedTrip?.voiceAttempt?.pending) onError(apiMessage(reason));
           })
           .finally(() => setProcessing(false));
       };
@@ -315,7 +317,7 @@ function VoiceRecorder({
 function VoiceAttemptNotice({ trip }: { trip: TripView }) {
   const attempt = trip.voiceAttempt!;
   return <div className="rounded-lg bg-muted p-3 text-xs">
-    <div className="flex justify-between gap-2 font-semibold"><span>{attempt.applied ? "Ответ применён" : "Попытка не применена"}</span><span className="tabular-nums">{attempt.latencyMs} мс</span></div>
+    <div className="flex justify-between gap-2 font-semibold"><span>{attempt.applied ? "Ответ применён" : attempt.errorCode === "LowConfidence" ? "Пассажир просит уточнить" : "Попытка не применена"}</span><span className="tabular-nums">{attempt.latencyMs} мс</span></div>
     {attempt.transcript && <p className="mt-1 text-muted-foreground">«{attempt.transcript}»</p>}
     {attempt.confidence !== null && <p className="mt-1 text-muted-foreground">Уверенность Laya: {Math.round(attempt.confidence * 100)}%</p>}
     {attempt.score !== null && <p className="mt-1 text-muted-foreground">Вежливость: {Math.round(attempt.score * 100)}%</p>}
