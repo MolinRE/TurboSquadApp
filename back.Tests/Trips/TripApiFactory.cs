@@ -91,10 +91,11 @@ public sealed class FakeQuestionGenerationClient : IQuestionGenerationClient
 {
     public List<QuestionGenerationPrompt> Prompts { get; } = [];
     public Func<QuestionGenerationPrompt, string> Response { get; set; } = _ => "{\"questions\":[]}";
-    public Task<string> GenerateAsync(QuestionGenerationPrompt prompt, CancellationToken cancellationToken)
+    public Func<QuestionGenerationPrompt, string> FinishReason { get; set; } = _ => "stop";
+    public Task<QuestionGenerationResponse> GenerateAsync(QuestionGenerationPrompt prompt, CancellationToken cancellationToken)
     {
         Prompts.Add(prompt);
-        return Task.FromResult(Response(prompt));
+        return Task.FromResult(new QuestionGenerationResponse(Response(prompt), FinishReason(prompt)));
     }
 }
 

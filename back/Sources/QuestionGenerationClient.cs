@@ -8,11 +8,13 @@ using TurboSquadApp.Voice;
 
 public sealed record QuestionGenerationPrompt(
     string SourceTitle, string Section, string Text, IReadOnlyList<string> Topics,
-    string? Feedback, string? PreviousOutput = null);
+    string? Feedback, string? PreviousOutput = null, int MaxTokens = 8_000);
+
+public sealed record QuestionGenerationResponse(string Content, string? FinishReason);
 
 public interface IQuestionGenerationClient
 {
-    Task<string> GenerateAsync(QuestionGenerationPrompt prompt, CancellationToken cancellationToken);
+    Task<QuestionGenerationResponse> GenerateAsync(QuestionGenerationPrompt prompt, CancellationToken cancellationToken);
 }
 
 /// <summary>Отдельный JSON-запрос к тому же провайдеру, который используется для голоса.</summary>
@@ -52,7 +54,7 @@ public sealed class PolzaQuestionGenerationClient(HttpClient httpClient, VoiceOp
         Не выдумывай цитаты и пункты. Не включай персональные данные. Если материала недостаточно, верни {"questions":[]}.
         """;
 
-    public async Task<string> GenerateAsync(QuestionGenerationPrompt prompt, CancellationToken cancellationToken)
+    public async Task<QuestionGenerationResponse> GenerateAsync(QuestionGenerationPrompt prompt, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(options.PolzaApiKey))
             throw new InvalidOperationException("Не задан ключ polza.ai для генерации Вопросов");
@@ -63,7 +65,7 @@ public sealed class PolzaQuestionGenerationClient(HttpClient httpClient, VoiceOp
         {
             model = options.LlmModel,
             stream = false,
-            max_tokens = 3000,
+            max_tokens = prompt.MaxTokens,
             response_format = new { type = "json_schema", json_schema = new { name = "question_drafts", strict = true, schema = ResponseSchema } },
             messages = new[]
             {
@@ -87,8 +89,10 @@ public sealed class PolzaQuestionGenerationClient(HttpClient httpClient, VoiceOp
             choices.ValueKind != JsonValueKind.Array || choices.GetArrayLength() == 0 ||
             !choices[0].TryGetProperty("message", out var message) ||
             !message.TryGetProperty("content", out var content) ||
-            content.ValueKind != JsonValueKind.String)
+            content.ValueKind is not (JsonValueKind.String or JsonValueKind.Null))
             throw new JsonException("Модель не вернула JSON Вопросов");
-        return content.GetString()!;
+        var finishReason = choices[0].TryGetProperty("finish_reason", out var reason) &&
+            reason.ValueKind == JsonValueKind.String ? reason.GetString() : null;
+        return new(content.ValueKind == JsonValueKind.Null ? string.Empty : content.GetString()!, finishReason);
     }
 }
