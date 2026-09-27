@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Runtime.CompilerServices;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -29,6 +30,8 @@ public sealed class TripApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<TimeProvider>(Clock);
             services.AddSingleton<FakeVoicePipeline>();
             services.AddSingleton<IVoicePipeline>(sp => sp.GetRequiredService<FakeVoicePipeline>());
+            services.AddSingleton<FakeLlmClient>();
+            services.AddSingleton<ILlmClient>(sp => sp.GetRequiredService<FakeLlmClient>());
         });
 
     /// <summary>Клиент от имени нового Проводника.</summary>
@@ -74,6 +77,28 @@ public sealed class FakeVoicePipeline : IVoicePipeline
                 $"Голосовой ответ {(char)marker}", ((char)marker).ToString(), 0.95, 12, true, null, null, "fake-laya"),
             _ => VoicePipelineResult.Failure("SttInvalidResponse", "Пустой тестовый ответ", 4),
         };
+    }
+}
+
+public sealed class FakeLlmClient : ILlmClient
+{
+    public bool Fail { get; set; }
+    public bool Block { get; set; }
+    public int Calls { get; private set; }
+
+    public async IAsyncEnumerable<LlmToken> StreamAsync(
+        LlmRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        Calls++;
+        await Task.CompletedTask;
+        if (Block)
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            yield break;
+        }
+        if (Fail || request.UserPrompt.Contains("\"choice\":\"b\"", StringComparison.Ordinal))
+            throw new LlmProviderException("LlmProviderError", "Тестовая ошибка Qwen");
+        yield return new LlmToken("Пассажир отвечает", "fake-qwen");
     }
 }
 

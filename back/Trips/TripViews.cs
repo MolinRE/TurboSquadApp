@@ -56,4 +56,5 @@ public sealed record TripEndView(TripStatus Status, string Summary);
 
 public sealed record VoiceAttemptView(
     string? Transcript, string? Choice, double? Confidence, int LatencyMs,
-    bool Applied, string? ErrorCode, string? ProviderRequestId);
+    bool Applied, string? ErrorCode, string? ProviderRequestId, string AttemptId,
+    string? PassengerReply = null, string? ReplyError = null, bool Pending = false);

@@ -67,9 +67,15 @@ builder.Services.AddHttpClient<PolzaSttClient>(client =>
     client.Timeout = TimeSpan.FromSeconds(30);
 });
 builder.Services.AddHttpClient<LayaClient>(client => client.Timeout = TimeSpan.FromSeconds(30));
+builder.Services.AddHttpClient<PolzaLlmClient>(client =>
+{
+    client.BaseAddress = new Uri(voiceOptions.PolzaBaseUrl.TrimEnd('/') + "/");
+    client.Timeout = Timeout.InfiniteTimeSpan;
+});
 builder.Services.AddScoped<IVoicePipeline, VoicePipelineService>();
 builder.Services.AddScoped<ISttClient>(sp => sp.GetRequiredService<PolzaSttClient>());
 builder.Services.AddScoped<ILayaClient>(sp => sp.GetRequiredService<LayaClient>());
+builder.Services.AddScoped<ILlmClient>(sp => sp.GetRequiredService<PolzaLlmClient>());
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<IPasswordHasher<AppUser>, PasswordHasher<AppUser>>();
 

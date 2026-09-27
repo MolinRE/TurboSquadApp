@@ -11,6 +11,7 @@ import {
   chooseProactive,
   chooseVariant,
   startTrip,
+  streamPassengerReply,
   uploadVoice,
   type TripView,
 } from "@/lib/api";
@@ -31,15 +32,40 @@ export function TripGame() {
   const [trip, setTrip] = useState<TripView | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [passengerReply, setPassengerReply] = useState("");
+  const [replyError, setReplyError] = useState<string | null>(null);
 
   async function run(action: () => Promise<TripView>) {
     setBusy(true);
     setError(null);
+    setPassengerReply("");
+    setReplyError(null);
     try {
       setTrip(await action());
     } catch (reason) {
       if (reason instanceof ApiError && reason.payload?.trip) setTrip(reason.payload.trip);
       setError(apiMessage(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleVoiceTrip(next: TripView) {
+    setTrip(next);
+    setPassengerReply("");
+    setReplyError(null);
+    const attemptId = next.voiceAttempt?.attemptId;
+    if (!attemptId || !next.voiceAttempt?.pending) return;
+    setBusy(true);
+    try {
+      await streamPassengerReply(
+        next.id,
+        attemptId,
+        (token) => setPassengerReply((current) => current + token),
+        (streamedTrip) => setTrip(streamedTrip),
+      );
+    } catch (reason) {
+      setReplyError(apiMessage(reason));
     } finally {
       setBusy(false);
     }
@@ -97,7 +123,7 @@ export function TripGame() {
           </CardContent>
         </Card>
       ) : trip.step ? (
-        <StepCard trip={trip} busy={busy} onTrip={setTrip} onError={setError} />
+        <StepCard trip={trip} busy={busy} onTrip={setTrip} onVoiceTrip={handleVoiceTrip} onError={setError} passengerReply={passengerReply} replyError={replyError} />
       ) : null}
     </div>
   );
@@ -121,12 +147,18 @@ function StepCard({
   trip,
   busy,
   onTrip,
+  onVoiceTrip,
   onError,
+  passengerReply,
+  replyError,
 }: {
   trip: TripView;
   busy: boolean;
   onTrip: (trip: TripView) => void;
+  onVoiceTrip: (trip: TripView) => Promise<void>;
   onError: (message: string | null) => void;
+  passengerReply: string;
+  replyError: string | null;
 }) {
   const step = trip.step!;
   return (
@@ -137,7 +169,7 @@ function StepCard({
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         {step.answerType === "voice" ? (
-          <VoiceRecorder trip={trip} busy={busy} onTrip={onTrip} onError={onError} />
+          <VoiceRecorder trip={trip} busy={busy} onVoiceTrip={onVoiceTrip} onError={onError} />
         ) : (
           <div className="flex flex-col gap-2">
             {step.variants.map((variant) => <Button key={variant.id} variant="outline" className="h-auto min-h-11 justify-start whitespace-normal py-3 text-left" disabled={busy} onClick={() => {
@@ -147,6 +179,8 @@ function StepCard({
           </div>
         )}
         {trip.voiceAttempt && <VoiceAttemptNotice trip={trip} />}
+        {passengerReply && <div className="rounded-lg bg-brand-soft p-3 text-sm"><strong className="text-brand">Пассажир</strong><p className="mt-1">{passengerReply}</p></div>}
+        {replyError && <p role="alert" className="rounded-lg bg-danger-soft p-3 text-sm text-danger">{replyError}</p>}
       </CardContent>
     </Card>
   );
@@ -167,12 +201,12 @@ function StepTimer({ expiresAt }: { expiresAt: string | null }) {
 function VoiceRecorder({
   trip,
   busy,
-  onTrip,
+  onVoiceTrip,
   onError,
 }: {
   trip: TripView;
   busy: boolean;
-  onTrip: (trip: TripView) => void;
+  onVoiceTrip: (trip: TripView) => Promise<void>;
   onError: (message: string | null) => void;
 }) {
   const [recording, setRecording] = useState(false);
@@ -190,14 +224,15 @@ function VoiceRecorder({
       nextRecorder.ondataavailable = (event) => { if (event.data.size > 0) chunks.current.push(event.data); };
       nextRecorder.onstop = () => {
         const blob = new Blob(chunks.current, { type: nextRecorder.mimeType || "audio/webm" });
+        const attemptId = crypto.randomUUID();
         stream.current?.getTracks().forEach((track) => track.stop());
         stream.current = null;
         setRecording(false);
         setProcessing(true);
-        void uploadVoice(trip.id, trip.step!.eventId, trip.step!.stepId, blob)
-          .then(onTrip)
+        void uploadVoice(trip.id, trip.step!.eventId, trip.step!.stepId, attemptId, blob)
+          .then(onVoiceTrip)
           .catch((reason) => {
-            if (reason instanceof ApiError && reason.payload?.trip) onTrip(reason.payload.trip);
+            if (reason instanceof ApiError && reason.payload?.trip) void onVoiceTrip(reason.payload.trip);
             onError(apiMessage(reason));
           })
           .finally(() => setProcessing(false));

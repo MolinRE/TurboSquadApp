@@ -106,7 +106,8 @@ public sealed record Decision(
 /// </summary>
 public sealed record VoiceAttempt(
     string EventId, int EventVersion, string StepId, string? Transcript, string? Choice,
-    double? Confidence, int LatencyMs, bool Applied, string? ErrorCode, string? ProviderRequestId) : JournalEntry;
+    double? Confidence, int LatencyMs, bool Applied, string? ErrorCode, string? ProviderRequestId,
+    string AttemptId = "", string? PassengerReply = null, string? ReplyError = null) : JournalEntry;
 
 /// <summary>Изменение Шкалы: из контента (Nominal) и фактическое после обрезки по диапазону (Applied).</summary>
 public sealed record ScaleChange(string Scale, int Nominal, int Applied, int Before, int After);
