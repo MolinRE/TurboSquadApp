@@ -1,6 +1,6 @@
 # Backend
 
-The backend uses EF Core with PostgreSQL. Set `ConnectionStrings:Postgres` in local configuration or through `ConnectionStrings__Postgres`. Set the database credentials with `POSTGRES_USER` and `POSTGRES_PASSWORD`; keep secrets out of the repository. The default connection string points at the Supabase transaction pooler (port 6543) with `No Reset On Close=true`: the pooler does not answer the `DISCARD ALL` that Npgsql sends when it reuses a pooled connection, and the query hangs.
+The backend uses EF Core with PostgreSQL. Set `ConnectionStrings:Postgres` in local configuration or through `ConnectionStrings__Postgres`. Set the database credentials with `POSTGRES_USER` and `POSTGRES_PASSWORD`; keep secrets out of the repository. The default connection string points at the team's shared PostgreSQL server (`192.144.15.126:55432`, database `default`), which replaced Supabase on 2026-09-27; it is reached directly, and the login and password come only from `POSTGRES_USER` and `POSTGRES_PASSWORD`. Docker Compose uses its own local database instead.
 
 Docker Compose sets `Database__MigrateOnStartup=true`, so it applies committed EF Core migrations before seeding. For a manual backend run, apply migrations yourself.
 
