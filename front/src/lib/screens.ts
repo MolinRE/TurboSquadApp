@@ -37,6 +37,8 @@ export type Screen = {
   section?: WorkspaceSection;
   /** Экран не показывается в меню (открывается из другого экрана). */
   hidden?: boolean;
+  /** Пока заглушка: в боковом меню — в разделе «В разработке». */
+  inProgress?: boolean;
   icon?: LucideIcon;
 };
 
@@ -206,6 +208,7 @@ export const screens: Screen[] = [
   },
   {
     id: "blind-spots",
+    inProgress: true,
     path: "/analytics/blind-spots",
     title: "Слепые зоны",
     template: "workspace",
@@ -223,6 +226,7 @@ export const screens: Screen[] = [
   },
   {
     id: "blocks",
+    inProgress: true,
     path: "/analytics/blocks",
     title: "Успехи блоков",
     template: "workspace",
@@ -239,6 +243,7 @@ export const screens: Screen[] = [
   },
   {
     id: "content-quality",
+    inProgress: true,
     path: "/analytics/content-quality",
     title: "Качество контента",
     template: "workspace",
@@ -255,6 +260,7 @@ export const screens: Screen[] = [
   },
   {
     id: "engagement",
+    inProgress: true,
     path: "/analytics/engagement",
     title: "Вовлечённость",
     template: "workspace",
@@ -271,6 +277,7 @@ export const screens: Screen[] = [
   },
   {
     id: "employees",
+    inProgress: true,
     path: "/analytics/employees",
     title: "Карточки проводников",
     template: "workspace",
@@ -283,6 +290,7 @@ export const screens: Screen[] = [
   },
   {
     id: "employee",
+    inProgress: true,
     path: "/analytics/employees/[id]",
     title: "Карточка проводника",
     template: "workspace",
@@ -385,6 +393,7 @@ export const screens: Screen[] = [
   },
   {
     id: "dictionaries",
+    inProgress: true,
     path: "/cms/dictionaries",
     title: "Справочники",
     template: "workspace",
@@ -400,6 +409,7 @@ export const screens: Screen[] = [
   },
   {
     id: "publications",
+    inProgress: true,
     path: "/cms/publications",
     title: "Журнал публикаций",
     template: "workspace",
