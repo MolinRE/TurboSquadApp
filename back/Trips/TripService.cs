@@ -7,6 +7,7 @@ using TurboSquadApp.Data;
 using TurboSquadApp.Events;
 using TurboSquadApp.Voice;
 using TurboSquadApp.Scoring;
+using TurboSquadApp.Achievements;
 
 namespace TurboSquadApp.Trips;
 
@@ -17,7 +18,7 @@ namespace TurboSquadApp.Trips;
 /// </summary>
 public sealed class TripService(
     AppDbContext dbContext, TimeProvider clock, IVoicePipeline voicePipeline, ILlmClient llmClient, VoiceOptions voiceOptions,
-    KnowledgeScoringService scoring)
+    KnowledgeScoringService scoring, AchievementService achievements)
 {
     /// <summary>Допуск на задержку сети: ответ позже таймера больше чем на него засчитывается как таймаут.</summary>
     public static readonly TimeSpan TimerTolerance = TimeSpan.FromSeconds(1);
@@ -90,6 +91,7 @@ public sealed class TripService(
 
         await AppendToJournalAsync(record, state, result.State, now, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await achievements.EvaluateAsync(record.UserId, cancellationToken);
         return Results.Ok(View(record, result.State));
     }
 
@@ -159,6 +161,7 @@ public sealed class TripService(
             var timeoutResult = TripEngine.Reduce(timedOutState, new TimeOut());
             await AppendToJournalAsync(record, state, timeoutResult.State, now, cancellationToken);
             await dbContext.SaveChangesAsync(cancellationToken);
+            await achievements.EvaluateAsync(record.UserId, cancellationToken);
             return Results.Ok(View(record, timeoutResult.State, VoiceView(timedOutAttempt)));
         }
 
@@ -266,6 +269,7 @@ public sealed class TripService(
             row.VoiceLlmLatencyMs = (int)llmTimer.ElapsedMilliseconds;
             await AppendToJournalAsync(record, state, preview.State, clock.GetUtcNow(), CancellationToken.None);
             await dbContext.SaveChangesAsync(CancellationToken.None);
+            await achievements.EvaluateAsync(record.UserId, CancellationToken.None);
             committed = true;
             var appliedAttempt = attempt with { Applied = true, PassengerReply = reply, LlmLatencyMs = row.VoiceLlmLatencyMs };
             await WriteSseAsync(response, "done", new { reply, requestId, trip = View(record, preview.State, VoiceView(appliedAttempt)) }, cancellationToken);

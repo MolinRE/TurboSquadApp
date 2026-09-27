@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
 using TurboSquadApp.Data;
 using TurboSquadApp.Trips;
+using TurboSquadApp.Events;
 
 namespace TurboSquadApp.Scoring;
 
@@ -35,14 +36,19 @@ public sealed class KnowledgeScoringService(AppDbContext db)
     public Task<int> ApplyTripDecisionAsync(Guid userId, TripState before, Decision decision,
         DateTimeOffset now, CancellationToken cancellationToken)
     {
-        if (before.CurrentStep is not { } step ||
-            !step.Reactions.Any(reaction => reaction.Competencies?.GetValueOrDefault("knowledge") > 0))
+        if (TripKnowledgeCost(before.CurrentStep, decision.VariantId, decision.TimedOut) is not { } cost)
             return Task.FromResult(0);
-
-        var reaction = decision.TimedOut ? step.Timeout : step.Variants?.Single(v => v.Id == decision.VariantId);
-        var cost = reaction?.Competencies?.GetValueOrDefault("knowledge") ?? 0;
         return ApplyAsync(userId, KnowledgeUnit.EventStep(decision.EventId, decision.StepId),
             cost > 0, cost, now, cancellationToken);
+    }
+
+    /// <summary>null — Шаг не оценивается по Знанию; 0 — принятое неверное решение.</summary>
+    public static int? TripKnowledgeCost(Step? step, string? variantId, bool timedOut)
+    {
+        if (step is null || !step.Reactions.Any(reaction => reaction.Competencies?.GetValueOrDefault("knowledge") > 0))
+            return null;
+        var reaction = timedOut ? step.Timeout : step.Variants?.Single(variant => variant.Id == variantId);
+        return reaction?.Competencies?.GetValueOrDefault("knowledge") ?? 0;
     }
 
     public async Task<int> ApplyAsync(Guid userId, KnowledgeUnit unit, bool correct, int cost,
