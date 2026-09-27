@@ -14,10 +14,10 @@ public class SeedContentTests
     private static Step Step(string eventId, string stepId) => Event(eventId).Steps.Single(s => s.Id == stepId);
 
     [Fact]
-    public void Seeds_are_shift_start_and_two_situations_in_version_1()
+    public void Seeds_are_shift_start_and_two_scored_situations()
     {
         Assert.Equal(
-            [("zastup", 1), ("sit-06", 2), ("sit-33", 2)],
+            [("zastup", 1), ("sit-06", 3), ("sit-33", 3)],
             SeedContent.Events.Select(e => (e.Document.Id, e.Document.Version)));
     }
 

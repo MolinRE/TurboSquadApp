@@ -53,6 +53,7 @@ public sealed class TripJournalRecord
     public string? StepId { get; set; }
     public string? VariantId { get; set; }
     public bool TimedOut { get; set; }
+    public int KnowledgeDelta { get; set; }
 
     /// <summary>Сколько прошло с показа Шага или Проактивного выбора до ответа.</summary>
     public int? ElapsedMs { get; set; }

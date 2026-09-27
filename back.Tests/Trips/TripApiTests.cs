@@ -36,7 +36,7 @@ public class TripApiTests(TripApiFactory factory) : IClassFixture<TripApiFactory
 
         var decisions = await factory.Database(db => db.TripJournal.Where(r => r.TripId == trip.Id && r.Kind == "decision").ToListAsync());
         Assert.Equal(8, decisions.Count);
-        Assert.All(decisions, d => Assert.Equal((d.EventId == "zastup" ? 1 : 2, false), (d.EventVersion, d.ElapsedMs is null)));
+        Assert.All(decisions, d => Assert.Equal((d.EventId == "zastup" ? 1 : 3, false), (d.EventVersion, d.ElapsedMs is null)));
         var voiceAttempts = await factory.Database(db => db.TripJournal.Where(r => r.TripId == trip.Id && r.Kind == "voiceAttempt").ToListAsync());
         Assert.Equal(5, voiceAttempts.Count);
         Assert.All(voiceAttempts, attempt => Assert.True(attempt.VoiceApplied));
@@ -44,7 +44,7 @@ public class TripApiTests(TripApiFactory factory) : IClassFixture<TripApiFactory
         var debriefVoices = debrief["voiceAttempts"]!.AsArray();
         Assert.Equal(5, debriefVoices.Count);
         Assert.Equal(
-            [("sit-06", 2, "s1"), ("sit-33", 2, "s1"), ("sit-33", 2, "s2"), ("sit-33", 2, "s3"), ("sit-33", 2, "s4")],
+            [("sit-06", 3, "s1"), ("sit-33", 3, "s1"), ("sit-33", 3, "s2"), ("sit-33", 3, "s3"), ("sit-33", 3, "s4")],
             debriefVoices.Select(attempt => ((string)attempt!["eventId"]!, (int)attempt["eventVersion"]!, (string)attempt["stepId"]!)));
         Assert.All(debriefVoices, voiceAttempt =>
         {
@@ -87,7 +87,7 @@ public class TripApiTests(TripApiFactory factory) : IClassFixture<TripApiFactory
         Assert.Equal(("failed", "scale", "loyalty"), (record.Status, record.FailureCause, record.FailureScale));
         Assert.NotNull(record.FinishedAt);
         var interrupted = await factory.Database(db => db.TripJournal.SingleAsync(r => r.TripId == trip.Id && r.Result == "interrupted"));
-        Assert.Equal(("sit-33", 2), (interrupted.EventId, interrupted.EventVersion));
+        Assert.Equal(("sit-33", 3), (interrupted.EventId, interrupted.EventVersion));
     }
 
     [Fact]
@@ -316,6 +316,7 @@ public class TripApiTests(TripApiFactory factory) : IClassFixture<TripApiFactory
     internal sealed class TripClient(HttpClient http, JsonNode json)
     {
         public JsonNode Json { get; private set; } = json;
+        public HttpClient Http => http;
 
         public Guid Id => Guid.Parse((string)Json["id"]!);
         public string Status => (string)Json["status"]!;
@@ -327,9 +328,9 @@ public class TripApiTests(TripApiFactory factory) : IClassFixture<TripApiFactory
         private int Scale(string code) =>
             (int)Json["scales"]!.AsArray().Single(s => (string)s!["code"]! == code)!["value"]!;
 
-        public static async Task<TripClient> Start(TripApiFactory factory, string serviceClass)
+        public static async Task<TripClient> Start(TripApiFactory factory, string serviceClass, HttpClient? client = null)
         {
-            var http = await factory.CreateConductorClient();
+            var http = client ?? await factory.CreateConductorClient();
             var response = await http.PostAsJsonAsync("/api/trips", new { serviceClass });
             Assert.Equal(HttpStatusCode.Created, response.StatusCode);
             return new TripClient(http, (await response.Content.ReadFromJsonAsync<JsonNode>())!);
@@ -412,15 +413,15 @@ public class TripContentPinningTests(TripApiFactory factory) : IClassFixture<Tri
         var trip = await TripApiTests.TripClient.Start(factory, "business");
         await trip.Choose("a", "a");
 
-        // Методист публикует №6 v3 и добавляет в пул Событие, которого в этом Рейсе нет.
+        // Методист публикует №6 v4 и добавляет в пул Событие, которого в этом Рейсе нет.
         var v3 = JsonNode.Parse(SeedContent.Events.Single(e => e.Document.Id == "sit-06").Json)!;
-        v3["version"] = 3;
+        v3["version"] = 4;
         v3["title"] = "Пассажир навеселе (v3)";
         var settings = JsonNode.Parse(await factory.Database(db => db.TripSettings.Select(s => s.Document).SingleAsync()))!;
         settings["proactiveChoice"]!["options"]![0]!["pool"]!.AsArray().Add("sit-99");
         await factory.Database(db =>
         {
-            db.EventDocuments.Add(new EventDocumentRecord { EventId = "sit-06", Version = 3, Document = v3.ToJsonString() });
+            db.EventDocuments.Add(new EventDocumentRecord { EventId = "sit-06", Version = 4, Document = v3.ToJsonString() });
             db.TripSettings.Single().Document = settings.ToJsonString();
             return db.SaveChangesAsync();
         });
@@ -431,6 +432,6 @@ public class TripContentPinningTests(TripApiFactory factory) : IClassFixture<Tri
 
         Assert.Equal("arrived", trip.Status);
         var sit06 = TripApiTests.DebriefEvents(await trip.Debrief()).Single(e => (string)e["eventId"]! == "sit-06");
-        Assert.Equal(("Пассажир с признаками алкогольного опьянения", 2), ((string)sit06["title"]!, (int)sit06["version"]!));
+        Assert.Equal(("Пассажир с признаками алкогольного опьянения", 3), ((string)sit06["title"]!, (int)sit06["version"]!));
     }
 }

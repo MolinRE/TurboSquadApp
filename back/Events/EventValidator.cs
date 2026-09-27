@@ -174,9 +174,16 @@ public static class EventValidator
             if (step.Variants is { Count: > 0 } && step.Variants.All(v => v.Conditions is { Count: > 0 }))
                 Warn(atStep, "У всех Вариантов есть Условия: при каком-то состоянии Рейса проводнику будет нечего выбрать", "ADR-0001");
 
+            var knowledgeCosts = step.Reactions.Select(reaction => reaction.Competencies?.GetValueOrDefault("knowledge") ?? 0)
+                .Where(cost => cost > 0).Distinct().ToList();
+            if (knowledgeCosts.Count > 1)
+                Error(atStep, "Верные Варианты одного Шага должны иметь одинаковую стоимость по Знанию", "PRD §7.3");
+
             foreach (var reaction in step.Reactions)
             {
                 var atReaction = IssueLocation.Of(step, reaction);
+                if (reaction.Competencies?.GetValueOrDefault("knowledge") < 0)
+                    Error(atReaction, "Стоимость по Знанию не может быть отрицательной", "PRD §7.3");
                 CheckConditions(reaction.Conditions, atReaction);
                 foreach (var code in (reaction.ScaleDeltas?.Keys ?? []).Where(code => !scaleCodes.Contains(code)))
                     Error(atReaction, $"Шкалы «{code}» нет в справочнике", "ADR-0001");

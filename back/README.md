@@ -6,6 +6,8 @@ Docker Compose sets `Database__MigrateOnStartup=true`, so every `docker compose 
 
 For the first scoring slice, each published Question has a `knowledgeCost` (default 10). The last accepted answer determines Knowledge mastery: a correct answer awards its cost, and a later wrong answer removes the awarded cost. The answer journal stores `knowledgeDelta`. `GET /api/profile` returns `knowledgePoints`, `competencePoints` (currently the same number), and the highest earned `rank` for the authenticated conductor. Rank thresholds are documented in `docs/open-questions.md`.
 
+For scored Event Steps, a Variant or timeout branch sets `competencies.knowledge` to a positive cost when correct; an absent or zero value means incorrect. All positive costs on one Step must match. The version 3 demo Events score real knowledge decisions at 10 points per Step. The shift-start placeholder has no knowledge score. Trip journal decisions also store `knowledgeDelta`; a voice attempt affects mastery only when its Variant is applied.
+
 After restoring packages, create and apply migrations with:
 
 ```bash

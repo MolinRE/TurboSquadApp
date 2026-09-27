@@ -6,6 +6,7 @@ using TurboSquadApp.Content;
 using TurboSquadApp.Data;
 using TurboSquadApp.Events;
 using TurboSquadApp.Voice;
+using TurboSquadApp.Scoring;
 
 namespace TurboSquadApp.Trips;
 
@@ -15,7 +16,8 @@ namespace TurboSquadApp.Trips;
 /// зафиксированном на старте, — справочники и настройка Рейса снимком, События ссылками на версии.
 /// </summary>
 public sealed class TripService(
-    AppDbContext dbContext, TimeProvider clock, IVoicePipeline voicePipeline, ILlmClient llmClient, VoiceOptions voiceOptions)
+    AppDbContext dbContext, TimeProvider clock, IVoicePipeline voicePipeline, ILlmClient llmClient, VoiceOptions voiceOptions,
+    KnowledgeScoringService scoring)
 {
     /// <summary>Допуск на задержку сети: ответ позже таймера больше чем на него засчитывается как таймаут.</summary>
     public static readonly TimeSpan TimerTolerance = TimeSpan.FromSeconds(1);
@@ -41,7 +43,7 @@ public sealed class TripService(
             StartedAt = now,
         };
         dbContext.Trips.Add(record);
-        AppendToJournal(record, TripState.Initial, result.State, now);
+        await AppendToJournalAsync(record, TripState.Initial, result.State, now, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         return Results.Created($"/api/trips/{record.Id}", View(record, result.State));
     }
@@ -79,7 +81,7 @@ public sealed class TripService(
         var result = TripEngine.Reduce(state, action);
         if (result.Rejection is { } rejection) return Rejected(rejection.Reason.ToString(), rejection.Message);
 
-        AppendToJournal(record, state, result.State, now);
+        await AppendToJournalAsync(record, state, result.State, now, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         return Results.Ok(View(record, result.State));
     }
@@ -142,14 +144,14 @@ public sealed class TripService(
             var timedOutAttempt = attempt with { ErrorCode = "VoiceDeadlineExceeded" };
             var timedOutState = TripEngine.Reduce(state, new RecordVoiceAttempt(timedOutAttempt)).State;
             var timeoutResult = TripEngine.Reduce(timedOutState, new TimeOut());
-            AppendToJournal(record, state, timeoutResult.State, now);
+            await AppendToJournalAsync(record, state, timeoutResult.State, now, cancellationToken);
             await dbContext.SaveChangesAsync(cancellationToken);
             return Results.Ok(View(record, timeoutResult.State, VoiceView(timedOutAttempt)));
         }
 
         if (!pipeline.Applied || pipeline.Choice is null)
         {
-            AppendToJournal(record, state, afterAttempt, now);
+            await AppendToJournalAsync(record, state, afterAttempt, now, cancellationToken);
             await dbContext.SaveChangesAsync(cancellationToken);
             return Results.UnprocessableEntity(new
             {
@@ -165,12 +167,12 @@ public sealed class TripService(
         {
             var rejectedAttempt = attempt with { ErrorCode = variantRejection.Reason.ToString() };
             var rejectedState = TripEngine.Reduce(state, new RecordVoiceAttempt(rejectedAttempt)).State;
-            AppendToJournal(record, state, rejectedState, now);
+            await AppendToJournalAsync(record, state, rejectedState, now, cancellationToken);
             await dbContext.SaveChangesAsync(cancellationToken);
             return Rejected(variantRejection.Reason.ToString(), variantRejection.Message);
         }
 
-        AppendToJournal(record, state, afterAttempt, now);
+        await AppendToJournalAsync(record, state, afterAttempt, now, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         return Results.Ok(TripView.Of(record.Id, result.State, null, VoiceView(attempt, pending: true)));
     }
@@ -258,7 +260,7 @@ public sealed class TripService(
             row.VoiceApplied = true;
             row.VoicePassengerReply = reply.ToString();
             row.VoiceLlmLatencyMs = (int)llmTimer.ElapsedMilliseconds;
-            AppendToJournal(record, state, preview.State, clock.GetUtcNow());
+            await AppendToJournalAsync(record, state, preview.State, clock.GetUtcNow(), CancellationToken.None);
             await dbContext.SaveChangesAsync(CancellationToken.None);
             committed = true;
             var appliedAttempt = attempt with { Applied = true, PassengerReply = reply.ToString(), LlmLatencyMs = row.VoiceLlmLatencyMs };
@@ -438,12 +440,24 @@ public sealed class TripService(
     /// Новые записи журнала движка — строками в контекст базы; итог Рейса и момент показа следующего Шага — в запись Рейса.
     /// Сохраняет вызывающий.
     /// </summary>
-    private void AppendToJournal(TripRecord record, TripState before, TripState after, DateTimeOffset now)
+    private async Task AppendToJournalAsync(TripRecord record, TripState before, TripState after, DateTimeOffset now,
+        CancellationToken cancellationToken)
     {
         var elapsedMs = (int)(now - record.StepStartedAt).TotalMilliseconds;
         var seq = before.Journal.Count;
         foreach (var entry in after.Journal.Skip(before.Journal.Count))
-            dbContext.TripJournal.Add(JournalRow(record.Id, ++seq, entry, elapsedMs, now));
+        {
+            var knowledgeDelta = 0;
+            if (entry is Decision decision && before.CurrentStep is { } step &&
+                step.Reactions.Any(reaction => reaction.Competencies?.GetValueOrDefault("knowledge") > 0))
+            {
+                var reaction = decision.TimedOut ? step.Timeout : step.Variants?.Single(v => v.Id == decision.VariantId);
+                var cost = reaction?.Competencies?.GetValueOrDefault("knowledge") ?? 0;
+                knowledgeDelta = await scoring.ApplyAsync(record.UserId, "step", $"{decision.EventId}:{decision.StepId}",
+                    cost > 0, cost, now, cancellationToken);
+            }
+            dbContext.TripJournal.Add(JournalRow(record.Id, ++seq, entry, elapsedMs, now, knowledgeDelta));
+        }
 
         record.Status = Code(after.Status);
         record.FailureCause = after.Failure is { } failure ? Code(failure.Cause) : null;
@@ -453,7 +467,8 @@ public sealed class TripService(
             record.StepStartedAt = now;
     }
 
-    private static TripJournalRecord JournalRow(Guid tripId, int seq, JournalEntry entry, int elapsedMs, DateTimeOffset now) => entry switch
+    private static TripJournalRecord JournalRow(Guid tripId, int seq, JournalEntry entry, int elapsedMs, DateTimeOffset now,
+        int knowledgeDelta) => entry switch
     {
         ProactiveChosen chosen => new()
         {
@@ -465,6 +480,7 @@ public sealed class TripService(
             TripId = tripId, Seq = seq, CreatedAt = now, Kind = TripJournalKinds.Decision,
             EventId = decision.EventId, EventVersion = decision.EventVersion, StepId = decision.StepId,
             VariantId = decision.VariantId, TimedOut = decision.TimedOut, ElapsedMs = elapsedMs,
+            KnowledgeDelta = knowledgeDelta,
             ScaleChanges = JsonSerializer.Serialize(decision.Changes, SnapshotJson),
             FlagsSet = JsonSerializer.Serialize(decision.FlagsSet, SnapshotJson),
             CriticalError = decision.CriticalError, ToStepId = decision.To,
