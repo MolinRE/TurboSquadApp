@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 using Microsoft.AspNetCore.Hosting;
@@ -116,10 +117,13 @@ public sealed class FakeEventGenerationClient : IEventGenerationClient
 /// <summary>Детерминированный провайдер для API-тестов: первый байт аудио задаёт choice.</summary>
 public sealed class FakeVoicePipeline : IVoicePipeline
 {
+    public ConcurrentQueue<VoicePipelineRequest> Requests { get; } = new();
+
     public async Task<VoicePipelineResult> ProcessAsync(
         VoicePipelineRequest request, Stream audio, string fileName, string? contentType,
         CancellationToken cancellationToken)
     {
+        Requests.Enqueue(request);
         var buffer = new byte[1];
         var marker = await audio.ReadAsync(buffer, cancellationToken) == 0 ? -1 : buffer[0];
         return marker switch

@@ -114,17 +114,21 @@ public sealed class TripService(
 
         var currentEvent = state.CurrentEvent!;
         var currentStep = state.CurrentStep!;
-        var questions = currentStep.Variants!
+        var available = currentStep.Variants!
             .Where(variant => state.Choices.Single(choice => choice.Variant.Id == variant.Id).Available)
-            .Select(variant => new VoiceQuestion(variant.Id, variant.Text))
             .ToList();
+        var questions = available.Select(variant => new VoiceQuestion(variant.Id, variant.Text)).ToList();
+        var expectedStages = (currentStep.RequiredRoleStages ?? [])
+            .Concat(available.SelectMany(variant => variant.RoleStages ?? []))
+            .ToHashSet();
+        var roleStages = LayaAssessment.RoleStageCodes.Where(expectedStages.Contains).ToList();
         VoicePipelineResult pipeline;
         await using (var stream = audio.OpenReadStream())
         {
             pipeline = await voicePipeline.ProcessAsync(
                 new VoicePipelineRequest(
                     currentEvent.Id, currentEvent.Version, currentStep.Id, currentStep.Situation,
-                    currentStep.Brief, questions),
+                    currentStep.Brief, questions, roleStages),
                 stream, audio.FileName, audio.ContentType, cancellationToken);
         }
 

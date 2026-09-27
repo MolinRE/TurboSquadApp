@@ -105,6 +105,21 @@ public class TripApiTests(TripApiFactory factory) : IClassFixture<TripApiFactory
     }
 
     [Fact]
+    public async Task Voice_step_asks_laya_only_for_role_stages_of_its_variants()
+    {
+        var trip = await TripClient.Start(factory, "business");
+        await trip.Choose("a", "a");
+        await trip.Proactive("obhod");
+        await trip.Choose("b", "a");                  // №6: s1 → s3 → №33, у Вариантов №6 нет этапов Ролевой модели
+        await trip.Choose("a", "a");                  // №33: s1 → s2, у Варианта s2/a этапы «правило» и «решение»
+
+        var requests = factory.Services.GetRequiredService<FakeVoicePipeline>().Requests;
+        Assert.Empty(requests.Last(r => (r.EventId, r.StepId) == ("sit-06", "s1")).RoleStages);
+        Assert.Equal(["acknowledge"], requests.Last(r => (r.EventId, r.StepId) == ("sit-33", "s1")).RoleStages);
+        Assert.Equal(["rule", "solution"], requests.Last(r => (r.EventId, r.StepId) == ("sit-33", "s2")).RoleStages);
+    }
+
+    [Fact]
     public async Task Escalation_conversation_uses_voice_for_second_spoken_step()
     {
         var trip = await TripClient.Start(factory, "business");
