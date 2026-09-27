@@ -175,6 +175,8 @@ public sealed class QuestionBankService(AppDbContext db)
         record.ExplanationKeyFact = input.ExplanationKeyFact ?? string.Empty;
         record.Quote = input.Quote;
         record.Source = input.Source ?? string.Empty;
+        if (record.SourceId is not null)
+            record.Options = QuestionOptionsCodec.WithSource(record.Type, record.Options, record.Quote, record.Source);
         record.Topic = input.Topic ?? string.Empty;
         record.Categories = JsonSerializer.Serialize(input.Categories ?? []);
         record.ServiceClasses = JsonSerializer.Serialize(input.ServiceClasses ?? []);

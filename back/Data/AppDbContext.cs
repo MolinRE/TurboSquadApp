@@ -15,6 +15,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<TripRecord> Trips => Set<TripRecord>();
     public DbSet<TripJournalRecord> TripJournal => Set<TripJournalRecord>();
     public DbSet<QuestionRecord> Questions => Set<QuestionRecord>();
+    public DbSet<SourceRecord> Sources => Set<SourceRecord>();
     public DbSet<SwipeShiftRecord> SwipeShifts => Set<SwipeShiftRecord>();
     public DbSet<SwipeAnswerRecord> SwipeAnswers => Set<SwipeAnswerRecord>();
 
@@ -67,6 +68,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         ContentModel.Configure(modelBuilder);
         TripModel.Configure(modelBuilder);
         QuestionModel.Configure(modelBuilder);
+        SourceModel.Configure(modelBuilder);
         SwipeShiftModel.Configure(modelBuilder);
         SeedOrganization(modelBuilder);
     }

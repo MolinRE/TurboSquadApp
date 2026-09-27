@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using TurboSquadApp.Events;
 using TurboSquadApp.Trips;
 
@@ -39,17 +40,26 @@ public sealed record SwipeOptions(SwipeSideOption Right, SwipeSideOption Left, S
 }
 
 /// <summary>Сторона свайпа: подпись и изменения Шкал по коду Шкалы.</summary>
-public sealed record SwipeSideOption(string Label, IReadOnlyDictionary<string, int> ScaleDeltas);
+public sealed record SwipeSideOption(
+    string Label, IReadOnlyDictionary<string, int> ScaleDeltas,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Quote = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Source = null);
 
 /// <summary>Один ответ или несколько: варианты с отметкой верных. Пока не играется.</summary>
 public sealed record ChoiceOptions(IReadOnlyList<ChoiceOption> Options) : IQuestionOptions;
 
-public sealed record ChoiceOption(string Id, string Text, bool Correct);
+public sealed record ChoiceOption(
+    string Id, string Text, bool Correct,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Quote = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Source = null);
 
 /// <summary>Последовательность: шаги в верном порядке. Пока не играется.</summary>
 public sealed record SequenceOptions(IReadOnlyList<SequenceStep> Steps) : IQuestionOptions;
 
-public sealed record SequenceStep(string Id, string Text);
+public sealed record SequenceStep(
+    string Id, string Text,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Quote = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Source = null);
 
 /// <summary>Типизированные варианты общего банка Вопросов.</summary>
 public interface IQuestionOptions;
@@ -57,6 +67,27 @@ public interface IQuestionOptions;
 /// <summary>Читает и пишет варианты в существующей jsonb-колонке по типу Вопроса.</summary>
 public static class QuestionOptionsCodec
 {
+    /// <summary>Привязывает варианты сгенерированного Вопроса к цитате и пункту Источника.</summary>
+    public static string WithSource(string type, string json, string? quote, string source)
+    {
+        if (JsonNode.Parse(json) is not JsonObject root) return json;
+        IEnumerable<JsonObject> variants = type switch
+        {
+            QuestionTypes.Single or QuestionTypes.Multiple =>
+                (root["options"] as JsonArray)?.OfType<JsonObject>() ?? [],
+            QuestionTypes.Sequence => (root["steps"] as JsonArray)?.OfType<JsonObject>() ?? [],
+            QuestionTypes.Swipe => new[] { root["right"] as JsonObject, root["left"] as JsonObject }
+                .OfType<JsonObject>(),
+            _ => [],
+        };
+        foreach (var variant in variants)
+        {
+            variant["quote"] = quote;
+            variant["source"] = source;
+        }
+        return root.ToJsonString();
+    }
+
     public static IQuestionOptions Read(string type, string json) => type switch
     {
         QuestionTypes.Single or QuestionTypes.Multiple =>

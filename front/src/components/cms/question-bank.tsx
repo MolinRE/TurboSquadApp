@@ -29,8 +29,8 @@ function editorOf(question: Question): QuestionInput {
   const options = question.options as Partial<{ options: ChoiceOption[]; steps: SequenceStep[] }>;
   const normalized = question.type === "swipe"
     ? {
-        right: { label: (question.options as { right?: { label?: string; scaleDeltas?: Record<string, number> } }).right?.label ?? "", scaleDeltas: (question.options as { right?: { scaleDeltas?: Record<string, number> } }).right?.scaleDeltas ?? {} },
-        left: { label: (question.options as { left?: { label?: string; scaleDeltas?: Record<string, number> } }).left?.label ?? "", scaleDeltas: (question.options as { left?: { scaleDeltas?: Record<string, number> } }).left?.scaleDeltas ?? {} },
+        right: { ...(question.options as { right?: { quote?: string; source?: string } }).right, label: (question.options as { right?: { label?: string } }).right?.label ?? "", scaleDeltas: (question.options as { right?: { scaleDeltas?: Record<string, number> } }).right?.scaleDeltas ?? {} },
+        left: { ...(question.options as { left?: { quote?: string; source?: string } }).left, label: (question.options as { left?: { label?: string } }).left?.label ?? "", scaleDeltas: (question.options as { left?: { scaleDeltas?: Record<string, number> } }).left?.scaleDeltas ?? {} },
         correct: (question.options as { correct?: "right" | "left" }).correct ?? "right",
       } as QuestionOptions
     : question.type === "sequence"
@@ -64,7 +64,17 @@ export function QuestionBank() {
 
   useEffect(() => {
     Promise.all([listQuestions(), getQuestionCatalog()])
-      .then(([items, reference]) => { setQuestions(items); setCatalog(reference); })
+      .then(([items, reference]) => {
+        setQuestions(items);
+        setCatalog(reference);
+        const requested = new URLSearchParams(window.location.search).get("question");
+        const question = items.find((item) => item.id === requested);
+        if (question) {
+          setSelected(question);
+          setForm(editorOf(question));
+          setCategoriesText(question.categories.join(", "));
+        }
+      })
       .catch((reason) => {
         if (reason instanceof ApiError && reason.status === 401) {
           window.localStorage.removeItem("turbo.accessToken");
