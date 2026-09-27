@@ -338,6 +338,8 @@ function QuestionCard({
 }) {
   const multiple = question.type === "multiple";
   const sequence = question.type === "sequence";
+  /** Варианты отмечаются, а ответ уходит по «Ответить». */
+  const pickable = multiple || sequence;
   /** Отмеченные варианты или шаги в порядке нажатия: у multiple сервер порядок не учитывает, у sequence это и есть ответ. */
   const [picked, setPicked] = useState<string[]>([]);
   const ready = sequence ? picked.length === question.options.length : picked.length > 0;
@@ -359,18 +361,18 @@ function QuestionCard({
       <p className="text-lg leading-snug font-bold">{question.statement}</p>
       {multiple ? <p className="-mt-2 text-sm text-muted-foreground">Верных несколько — отметьте все</p> : null}
       {sequence ? (
-        <p className="-mt-2 text-sm text-muted-foreground">Нажимайте шаги по порядку, с первого. Нажатие на номер убирает шаг</p>
+        <p className="-mt-2 text-sm text-muted-foreground">Нажимайте шаги по порядку, с первого. Повторное нажатие убирает шаг</p>
       ) : null}
       <div className="grid gap-2">
         {question.options.map((option) => {
-          const checked = (multiple || sequence) && picked.includes(option.id);
+          const checked = pickable && picked.includes(option.id);
           return (
             <Button
               key={option.id}
               variant="outline"
               disabled={disabled}
-              aria-pressed={multiple || sequence ? checked : undefined}
-              onClick={() => (multiple || sequence ? toggle(option.id) : onAnswer([option.id]))}
+              aria-pressed={pickable ? checked : undefined}
+              onClick={() => (pickable ? toggle(option.id) : onAnswer([option.id]))}
               className={cn(
                 "h-auto min-h-12 justify-start bg-card px-4 py-3 text-left text-base font-bold whitespace-normal",
                 checked && "border-brand bg-brand-soft hover:bg-brand-soft",
@@ -390,7 +392,7 @@ function QuestionCard({
           );
         })}
       </div>
-      {multiple || sequence ? (
+      {pickable ? (
         <Button disabled={disabled || !ready} onClick={() => onAnswer(picked)} className="h-12 text-base font-bold">
           Ответить
         </Button>

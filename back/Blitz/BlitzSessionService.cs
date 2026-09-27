@@ -192,12 +192,13 @@ public sealed class BlitzSessionService(AppDbContext dbContext, TimeProvider clo
     {
         var explanation = new Explanation(record.ExplanationText, record.ExplanationKeyFact, record.Source);
         var timeLimitMs = record.TimeLimitSec is { } seconds ? seconds * 1000 : DefaultTimeLimitMs;
-        if (record.ReadOptions() is ChoiceOptions choice)
+        var recordOptions = record.ReadOptions();
+        if (recordOptions is ChoiceOptions choice)
             return new(record.Id, record.Type, record.Statement, record.Topic, choice.Options, explanation, timeLimitMs);
 
         // Шаги в верном порядке перемешиваются так, чтобы порядок показа не совпал с верным, и получают id по месту показа:
         // в сидах и CMS id шагов идут по алфавиту в верном порядке и выдали бы ответ.
-        var steps = ((SequenceOptions)record.ReadOptions()).Steps.ToArray();
+        var steps = ((SequenceOptions)recordOptions).Steps.ToArray();
         var shown = steps.ToArray();
         do random.Shuffle(shown);
         while (shown.SequenceEqual(steps));
