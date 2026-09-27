@@ -19,6 +19,7 @@ using TurboSquadApp.Swipes;
 using TurboSquadApp.Trips;
 using TurboSquadApp.Voice;
 using TurboSquadApp.Analytics;
+using TurboSquadApp.Questions;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -63,6 +64,7 @@ builder.Services.AddScoped<ContentSeeder>();
 builder.Services.AddScoped<TripService>();
 builder.Services.AddScoped<VoiceAnalyticsService>();
 builder.Services.AddScoped<SwipeShiftService>();
+builder.Services.AddScoped<QuestionBankService>();
 builder.Services.AddSingleton(Random.Shared);   // колода Смены на свайпах; в тестах — с зерном
 var voiceOptions = VoiceOptions.FromConfiguration(builder.Configuration);
 builder.Services.AddSingleton(voiceOptions);
@@ -200,6 +202,7 @@ app.MapEventEndpoints();
 app.MapTripEndpoints();
 app.MapAnalyticsEndpoints();
 app.MapSwipeEndpoints();
+app.MapQuestionBankEndpoints();
 
 app.Run();
 
