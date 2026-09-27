@@ -6,7 +6,7 @@ using TurboSquadApp.Trips;
 
 namespace TurboSquadApp.Questions;
 
-/// <summary>Тип Вопроса (PRD §9.1). Описаны все, играется пока только свайп.</summary>
+/// <summary>Тип Вопроса (PRD §9.1): свайп играется в Смене, остальные — в Блице.</summary>
 public static class QuestionTypes
 {
     public const string Single = "single";
@@ -45,7 +45,7 @@ public sealed record SwipeSideOption(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Quote = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Source = null);
 
-/// <summary>Один ответ или несколько: варианты с отметкой верных. Пока не играется.</summary>
+/// <summary>Один ответ или несколько: варианты с отметкой верных.</summary>
 public sealed record ChoiceOptions(IReadOnlyList<ChoiceOption> Options) : IQuestionOptions;
 
 public sealed record ChoiceOption(
@@ -53,7 +53,7 @@ public sealed record ChoiceOption(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Quote = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Source = null);
 
-/// <summary>Последовательность: шаги в верном порядке. Пока не играется.</summary>
+/// <summary>Последовательность: шаги в верном порядке.</summary>
 public sealed record SequenceOptions(IReadOnlyList<SequenceStep> Steps) : IQuestionOptions;
 
 public sealed record SequenceStep(

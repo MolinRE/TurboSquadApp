@@ -7,16 +7,17 @@ using TurboSquadApp.Swipes;
 namespace TurboSquadApp.Blitz;
 
 /// <summary>
-/// Блиц через API (#41, #42): колода — снимок опубликованных Вопросов single и multiple на старте, время по часам сервера, ответы
-/// в базе. Вердикт считает сервер, клиент только показывает; верные варианты уходят клиенту лишь в ответе на Вопрос.
-/// multiple верен только за точный набор верных вариантов в любом порядке: частичного зачёта нет.
+/// Блиц через API (#41–#43): колода — снимок опубликованных Вопросов single, multiple и sequence на старте, время по часам
+/// сервера, ответы в базе. Вердикт считает сервер, клиент только показывает; верные варианты уходят клиенту лишь в ответе на Вопрос.
+/// multiple верен только за точный набор верных вариантов в любом порядке, sequence — только за полный верный порядок шагов:
+/// частичного зачёта нет.
 /// </summary>
 public sealed class BlitzSessionService(AppDbContext dbContext, TimeProvider clock, Random random)
 {
     public const int DeckSize = 10;
 
-    /// <summary>Типы Вопросов, которые уже играются в Блице; sequence придёт с #43.</summary>
-    private static readonly string[] PlayableTypes = [QuestionTypes.Single, QuestionTypes.Multiple];
+    /// <summary>Типы Вопросов, которые играются в Блице.</summary>
+    private static readonly string[] PlayableTypes = [QuestionTypes.Single, QuestionTypes.Multiple, QuestionTypes.Sequence];
 
     /// <summary>Лимит на ответ, если у Вопроса своего нет.</summary>
     public const int DefaultTimeLimitMs = 20_000;
@@ -63,20 +64,23 @@ public sealed class BlitzSessionService(AppDbContext dbContext, TimeProvider clo
         return Results.Ok(View(play));
     }
 
+    /// <summary>selectedOptionIds — ответ на single и multiple, orderedStepIds — на sequence; второй список не читается.</summary>
     public async Task<IResult> AnswerAsync(
-        Guid userId, Guid sessionId, string questionId, IReadOnlyList<string> selectedOptionIds, CancellationToken cancellationToken)
+        Guid userId, Guid sessionId, string questionId, IReadOnlyList<string> selectedOptionIds, IReadOnlyList<string> orderedStepIds,
+        CancellationToken cancellationToken)
     {
         var answeredAt = clock.GetUtcNow();
         if (await LoadAsync(userId, sessionId, cancellationToken) is not { } play) return Results.NotFound();
         if (RejectAnswer(play, questionId) is { } rejection) return rejection;
         var question = play.Current!;
-        if (InvalidSelection(question, selectedOptionIds) is { } invalid) return invalid;
+        var answerIds = question.Type == QuestionTypes.Sequence ? orderedStepIds : selectedOptionIds;
+        if (InvalidSelection(question, answerIds) is { } invalid) return invalid;
 
         // Ответ позже лимита больше чем на допуск сети — «Время вышло», как у таймера Рейса и Смены.
         var elapsedMs = ElapsedMs(play, answeredAt);
         if (elapsedMs > question.TimeLimitMs + TimeoutToleranceMs)
             return await SettleAsync(play, [], timedOut: true, question.TimeLimitMs, answeredAt, cancellationToken);
-        return await SettleAsync(play, selectedOptionIds, timedOut: false, elapsedMs, answeredAt, cancellationToken);
+        return await SettleAsync(play, answerIds, timedOut: false, elapsedMs, answeredAt, cancellationToken);
     }
 
     /// <summary>Время вышло: засчитывается как «Не знаю». Раньше лимита больше чем на допуск сети — отказ.</summary>
@@ -100,13 +104,15 @@ public sealed class BlitzSessionService(AppDbContext dbContext, TimeProvider clo
     }
 
     /// <summary>
-    /// Выбор, который нельзя проверить: не варианты этого Вопроса, повтор варианта, пустой выбор, у single — не ровно один.
-    /// Неполный или лишний набор у multiple — не отказ, а «неверно».
+    /// Выбор, который нельзя проверить: не варианты этого Вопроса, повтор варианта, пустой выбор, у single — не ровно один,
+    /// у sequence — не все шаги. Неполный или лишний набор у multiple и неверный порядок у sequence — не отказ, а «неверно».
     /// </summary>
     private static IResult? InvalidSelection(BlitzQuestion question, IReadOnlyList<string> selectedOptionIds)
     {
         var validIds = selectedOptionIds.All(id => question.Options.Any(option => option.Id == id))
             && selectedOptionIds.Distinct().Count() == selectedOptionIds.Count;
+        if (question.Type == QuestionTypes.Sequence && (selectedOptionIds.Count != question.Options.Count || !validIds))
+            return Rejected("InvalidSelection", "Расставьте по порядку все шаги этого Вопроса, каждый один раз");
         if (question.Type == QuestionTypes.Single && (selectedOptionIds.Count != 1 || !validIds))
             return Rejected("InvalidSelection", "Для Вопроса с одним ответом выберите ровно один из его вариантов");
         if (selectedOptionIds.Count == 0 || !validIds)
@@ -122,8 +128,7 @@ public sealed class BlitzSessionService(AppDbContext dbContext, TimeProvider clo
         CancellationToken cancellationToken)
     {
         var question = play.Current!;
-        var verdict = timedOut ? Verdict.Unknown
-            : selectedOptionIds.Order().SequenceEqual(question.CorrectOptionIds.Order()) ? Verdict.Correct : Verdict.Wrong;
+        var verdict = timedOut ? Verdict.Unknown : question.IsCorrect(selectedOptionIds) ? Verdict.Correct : Verdict.Wrong;
         var answer = new BlitzAnswerRecord
         {
             SessionId = play.Record.Id, Seq = play.Answers.Count, QuestionId = question.Id,
@@ -183,10 +188,24 @@ public sealed class BlitzSessionService(AppDbContext dbContext, TimeProvider clo
             new BlitzProgressView(play.Answers.Count, deck.Count, verdicts), question, result);
     }
 
-    private static BlitzQuestion Snapshot(QuestionRecord record) => new(
-        record.Id, record.Type, record.Statement, record.Topic, ((ChoiceOptions)record.ReadOptions()).Options,
-        new Explanation(record.ExplanationText, record.ExplanationKeyFact, record.Source),
-        record.TimeLimitSec is { } seconds ? seconds * 1000 : DefaultTimeLimitMs);
+    private BlitzQuestion Snapshot(QuestionRecord record)
+    {
+        var explanation = new Explanation(record.ExplanationText, record.ExplanationKeyFact, record.Source);
+        var timeLimitMs = record.TimeLimitSec is { } seconds ? seconds * 1000 : DefaultTimeLimitMs;
+        var recordOptions = record.ReadOptions();
+        if (recordOptions is ChoiceOptions choice)
+            return new(record.Id, record.Type, record.Statement, record.Topic, choice.Options, explanation, timeLimitMs);
+
+        // Шаги в верном порядке перемешиваются так, чтобы порядок показа не совпал с верным, и получают id по месту показа:
+        // в сидах и CMS id шагов идут по алфавиту в верном порядке и выдали бы ответ.
+        var steps = ((SequenceOptions)recordOptions).Steps.ToArray();
+        var shown = steps.ToArray();
+        do random.Shuffle(shown);
+        while (shown.SequenceEqual(steps));
+        var options = shown.Select((step, at) => new ChoiceOption(((char)('a' + at)).ToString(), step.Text, Correct: false)).ToList();
+        var correctOrder = steps.Select(step => options[Array.IndexOf(shown, step)].Id).ToList();
+        return new(record.Id, record.Type, record.Statement, record.Topic, options, explanation, timeLimitMs, correctOrder);
+    }
 
     /// <summary>Значение перечисления так же, как в JSON API: running, correct.</summary>
     private static string Code(Enum value) => JsonNamingPolicy.CamelCase.ConvertName(value.ToString());

@@ -16,13 +16,21 @@ public enum BlitzStatus
 
 /// <summary>
 /// Снимок Вопроса в колоде сессии: содержимое на момент старта, с верными вариантами. Правка Вопроса в CMS
-/// начатую сессию не меняет. TimeLimitMs — лимит на ответ от показа.
+/// начатую сессию не меняет. TimeLimitMs — лимит на ответ от показа. У sequence Options — шаги в порядке показа,
+/// CorrectOrder — их id в верном порядке.
 /// </summary>
 public sealed record BlitzQuestion(
     string Id, string Type, string Statement, string Topic, IReadOnlyList<ChoiceOption> Options, Explanation Explanation,
-    int TimeLimitMs)
+    int TimeLimitMs, IReadOnlyList<string>? CorrectOrder = null)
 {
-    public IReadOnlyList<string> CorrectOptionIds => Options.Where(option => option.Correct).Select(option => option.Id).ToList();
+    /// <summary>Верные варианты; у sequence — id шагов в верном порядке.</summary>
+    public IReadOnlyList<string> CorrectOptionIds =>
+        CorrectOrder ?? Options.Where(option => option.Correct).Select(option => option.Id).ToList();
+
+    /// <summary>sequence — только полный верный порядок; single и multiple — точный набор в любом порядке.</summary>
+    public bool IsCorrect(IReadOnlyList<string> answerIds) => CorrectOrder is { } order
+        ? answerIds.SequenceEqual(order)
+        : answerIds.Order().SequenceEqual(CorrectOptionIds.Order());
 }
 
 public sealed record BlitzSessionView(

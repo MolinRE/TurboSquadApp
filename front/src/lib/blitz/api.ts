@@ -13,7 +13,7 @@ export const blitzApi: BlitzApi = {
   startSession: () => post<BlitzSession>(sessionsPath, {}),
   getSession: (sessionId) => apiJson<BlitzSession>(sessionPath(sessionId)),
   showNextQuestion: (sessionId) => post<BlitzSession>(`${sessionPath(sessionId)}/next-question`),
-  answer: (sessionId, questionId, selectedOptionIds) =>
-    post<BlitzAnswerOutcome>(`${sessionPath(sessionId)}/answer`, { questionId, selectedOptionIds }),
+  answer: (sessionId, questionId, answer) =>
+    post<BlitzAnswerOutcome>(`${sessionPath(sessionId)}/answer`, { questionId, ...answer }),
   timeOut: (sessionId, questionId) => post<BlitzAnswerOutcome>(`${sessionPath(sessionId)}/timeout`, { questionId }),
 };
