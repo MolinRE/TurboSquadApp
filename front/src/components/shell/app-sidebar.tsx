@@ -26,7 +26,7 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar";
 import { BrandMark } from "@/components/shell/brand-mark";
-import { demoManager } from "@/lib/demo";
+import { initialsOf, roleLabelOf, useCurrentUser } from "@/lib/use-current-user";
 import {
   screens,
   workspaceSections,
@@ -41,6 +41,7 @@ const activeItem =
 
 export function AppSidebar() {
   const pathname = usePathname();
+  const user = useCurrentUser();
 
   return (
     <Sidebar collapsible="icon">
@@ -61,22 +62,20 @@ export function AppSidebar() {
                 >
                   <Avatar className="size-8 rounded-lg">
                     <AvatarFallback className="rounded-lg bg-sidebar-primary text-xs font-extrabold text-sidebar-primary-foreground">
-                      {demoManager.initials}
+                      {user ? initialsOf(user.displayName) : null}
                     </AvatarFallback>
                   </Avatar>
                   <span className="grid flex-1 text-left leading-tight">
-                    <span className="truncate font-semibold">
-                      {demoManager.name}
-                    </span>
+                    <span className="truncate font-semibold">{user?.displayName}</span>
                     <span className="truncate text-xs text-sidebar-foreground/60">
-                      {demoManager.roles}
+                      {user ? roleLabelOf(user.roles) : null}
                     </span>
                   </span>
                   <ChevronsUpDown className="ml-auto size-4" aria-hidden />
                 </SidebarMenuButton>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="min-w-56">
-                <DropdownMenuLabel>{demoManager.name}</DropdownMenuLabel>
+                <DropdownMenuLabel>{user?.displayName}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
                   <Link href="/login">

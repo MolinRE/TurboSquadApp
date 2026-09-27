@@ -68,6 +68,16 @@ export type TokenResponse = {
   expiresAt: string;
 };
 
+/** Кто вошёл: ответ /api/auth/me. */
+export type CurrentUser = {
+  userId: string;
+  username: string;
+  displayName: string;
+  roles: string[];
+  brigade: string | null;
+  depot: string | null;
+};
+
 export type VoiceLatency = { count: number; averageMs: number; p50Ms: number; p95Ms: number };
 
 export type VoiceAnalytics = {
@@ -171,6 +181,10 @@ async function json<T>(path: string, init: RequestInit = {}): Promise<T> {
     throw new ApiError(payload?.detail ?? payload?.message ?? "API вернул ошибку", response.status, payload);
   }
   return (await response.json()) as T;
+}
+
+export function getCurrentUser() {
+  return json<CurrentUser>("/api/auth/me");
 }
 
 export function startTrip(serviceClass: string) {

@@ -15,15 +15,17 @@ public class DemoLoginTests(TripApiFactory factory) : IClassFixture<TripApiFacto
     [Fact]
     public async Task Demo_account_logs_in_without_password_and_gets_its_roles()
     {
-        await AddUser("conductor-novice", UserRoles.Conductor);
+        await AddUser("conductor-novice", UserRoles.Conductor, "Игорь Лебедев");
 
         var token = await DemoLogin(factory.CreateClient(), "conductor-novice");
 
+        // Экраны берут пользователя из API: имя, роли, бригада и депо.
         var http = factory.CreateClient();
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
         var me = (await http.GetFromJsonAsync<JsonNode>("/api/auth/me"))!;
-        Assert.Equal("conductor-novice", (string)me["username"]!);
+        Assert.Equal(("conductor-novice", "Игорь Лебедев"), ((string)me["username"]!, (string)me["displayName"]!));
         Assert.Equal(["conductor"], me["roles"]!.AsArray().Select(r => (string)r!));
+        Assert.Equal(("Бригада 2", "Северное депо"), ((string)me["brigade"]!, (string)me["depot"]!));
         Assert.Equal(HttpStatusCode.Created, (await http.PostAsJsonAsync("/api/swipe-shifts", new { mode = "calm" })).StatusCode);
     }
 
@@ -56,10 +58,20 @@ public class DemoLoginTests(TripApiFactory factory) : IClassFixture<TripApiFacto
         return (string)(await response.Content.ReadFromJsonAsync<JsonNode>())!["accessToken"]!;
     }
 
-    private Task AddUser(string username, string role) => factory.Database(async db =>
+    /// <summary>Пользователь во второй бригаде Северного депо: в базе в памяти их кладёт тест, в Postgres — миграция.</summary>
+    private Task AddUser(string username, string role, string? displayName = null) => factory.Database(async db =>
     {
-        if (await db.Users.AnyAsync(u => u.Username == username)) return 0;
-        var user = new AppUser { Id = Guid.NewGuid(), Username = username, NormalizedUsername = username.ToUpperInvariant(), DisplayName = username };
+        var depotId = Guid.Parse("10000000-0000-0000-0000-000000000001");
+        var brigadeId = Guid.Parse("20000000-0000-0000-0000-000000000002");
+        if (!await db.Depots.AnyAsync(d => d.Id == depotId)) db.Depots.Add(new Depot { Id = depotId, Name = "Северное депо" });
+        if (!await db.Brigades.AnyAsync(b => b.Id == brigadeId))
+            db.Brigades.Add(new Brigade { Id = brigadeId, DepotId = depotId, Name = "Бригада 2" });
+        if (await db.Users.AnyAsync(u => u.Username == username)) return await db.SaveChangesAsync();
+        var user = new AppUser
+        {
+            Id = Guid.NewGuid(), Username = username, NormalizedUsername = username.ToUpperInvariant(),
+            DisplayName = displayName ?? username, DepotId = depotId, BrigadeId = brigadeId,
+        };
         user.Roles.Add(new AppUserRole { UserId = user.Id, Role = role });
         db.Users.Add(user);
         return await db.SaveChangesAsync();
