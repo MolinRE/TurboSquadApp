@@ -86,6 +86,20 @@ public class VoiceClientTests
     }
 
     [Fact]
+    public async Task Laya_rejects_incomplete_role_stage_instead_of_storing_zero()
+    {
+        var handler = new CapturingHandler(_ => Json(HttpStatusCode.OK,
+            "{\"answers\":{\"choice\":{\"choice\":\"a\",\"confidence\":0.9},\"score\":{\"score\":8},\"safety\":{\"noul\":0.1},\"acknowledge\":{\"noul\":0.8},\"rule\":{\"noul\":0.7},\"solution\":{},\"reassure\":{\"noul\":0.6}}}"));
+        using var http = new HttpClient(handler);
+        var laya = new LayaClient(http, new VoiceOptions { LayaToken = "laya-test", LayaEndpoint = "http://laya.test/v1/systemone" });
+
+        var result = await laya.DecideAsync("Ситуация", null, "Ответ", [new VoiceQuestion("a", "Критерий")], CancellationToken.None);
+
+        Assert.Equal("LayaInvalidResponse", result.ErrorCode);
+        Assert.Null(result.Assessment);
+    }
+
+    [Fact]
     public async Task Polza_qwen_stream_reads_content_only_and_sends_deterministic_options()
     {
         HttpRequestMessage? captured = null;

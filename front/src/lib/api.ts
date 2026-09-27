@@ -44,6 +44,16 @@ export type TripView = {
   voiceAttempt: VoiceAttempt | null;
 };
 
+export type TripDebrief = {
+  result: string;
+  summary: string;
+  voiceAttempts: Array<VoiceAttempt & {
+    eventId: string;
+    eventVersion: number;
+    stepId: string;
+  }>;
+};
+
 type ApiErrorPayload = {
   reason?: string;
   detail?: string;
@@ -144,6 +154,10 @@ export function startTrip(serviceClass: string) {
     method: "POST",
     body: JSON.stringify({ serviceClass }),
   });
+}
+
+export function getTripDebrief(tripId: string) {
+  return json<TripDebrief>(`/api/trips/${tripId}/debrief`);
 }
 
 export function getVoiceAnalytics() {

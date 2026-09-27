@@ -332,7 +332,9 @@ public sealed class LayaClient(HttpClient httpClient, VoiceOptions options) : IL
             }
             using (responseBody)
             {
-                if (!responseBody.RootElement.TryGetProperty("answers", out var answers) ||
+                if (responseBody.RootElement.ValueKind != JsonValueKind.Object ||
+                    !responseBody.RootElement.TryGetProperty("answers", out var answers) ||
+                    answers.ValueKind != JsonValueKind.Object ||
                     !answers.TryGetProperty("choice", out var choiceAnswer))
                     return new(null, null, "LayaInvalidResponse", "Laya вернула пустой ответ", null, LatencyMs: (int)timer.ElapsedMilliseconds);
 
@@ -366,9 +368,10 @@ public sealed class LayaClient(HttpClient httpClient, VoiceOptions options) : IL
         var scoreConfidence = answers.TryGetProperty("score", out scoreAnswer)
             ? GetDouble(scoreAnswer, "answer_confidence") ?? GetDouble(scoreAnswer, "confidence")
             : null;
-        var roleStages = LayaAssessment.RoleStageCodes
-            .Where(stage => answers.TryGetProperty(stage, out _))
-            .ToDictionary(stage => stage, stage => GetDouble(answers.GetProperty(stage), "noul") ?? 0);
+        var roleStages = new Dictionary<string, double>();
+        foreach (var stage in LayaAssessment.RoleStageCodes)
+            if (answers.TryGetProperty(stage, out var stageAnswer) && GetDouble(stageAnswer, "noul") is { } value)
+                roleStages.Add(stage, value);
         var safety = answers.TryGetProperty("safety", out var safetyAnswer)
             ? GetDouble(safetyAnswer, "noul")
             : null;
@@ -379,12 +382,13 @@ public sealed class LayaClient(HttpClient httpClient, VoiceOptions options) : IL
     }
 
     private static string? GetString(JsonElement element, string property) =>
-        element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String
+        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String
             ? value.GetString()
             : null;
 
     private static double? GetDouble(JsonElement element, string property) =>
-        element.TryGetProperty(property, out var value) && value.TryGetDouble(out var number)
+        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(property, out var value) &&
+        value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out var number)
             ? number
             : null;
 }

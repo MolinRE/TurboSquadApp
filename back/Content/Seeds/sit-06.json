@@ -1,6 +1,6 @@
 {
   "id": "sit-06",
-  "version": 1,
+  "version": 2,
   "title": "Пассажир с признаками алкогольного опьянения",
   "topic": "Конфликты",
   "categories": [
@@ -134,7 +134,7 @@
     },
     {
       "id": "s3",
-      "answerType": "buttons",
+      "answerType": "voice",
       "timerSec": 15,
       "situation": "Пассажир повышает голос и задевает соседей.",
       "variants": [

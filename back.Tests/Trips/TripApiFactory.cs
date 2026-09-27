@@ -119,7 +119,7 @@ public sealed class FakeLlmClient : ILlmClient
             await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
             yield break;
         }
-        if (Fail || request.UserPrompt.Contains("\"choice\":\"b\"", StringComparison.Ordinal))
+        if (Fail)
             throw new LlmProviderException("LlmProviderError", "Тестовая ошибка Qwen");
         yield return new LlmToken("Пассажир отвечает", "fake-qwen");
     }
