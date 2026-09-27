@@ -1,7 +1,20 @@
 "use client";
 
 import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
-import { CircleCheck, CircleX, Square, SquareCheck, Timer, Zap } from "lucide-react";
+import {
+  CircleCheck,
+  CircleDot,
+  CircleX,
+  ListChecks,
+  ListOrdered,
+  LoaderCircle,
+  RotateCcw,
+  Square,
+  SquareCheck,
+  Timer,
+  Zap,
+  type LucideIcon,
+} from "lucide-react";
 import { cn } from "cn";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,7 +26,14 @@ import { formatSeconds } from "@/components/swipes/format";
 import { SummaryActions, WhatToRepeat } from "@/components/swipes/shift-summary";
 import { ApiError } from "@/lib/api";
 import { blitzApi } from "@/lib/blitz/api";
-import type { BlitzAnswerOutcome, BlitzQuestion, BlitzRejection, BlitzSession as Session } from "@/lib/blitz/contract";
+import type {
+  BlitzAnswerOutcome,
+  BlitzQuestion,
+  BlitzQuestionType,
+  BlitzRejection,
+  BlitzResult,
+  BlitzSession as Session,
+} from "@/lib/blitz/contract";
 import { forgetSession, saveSession, savedSession } from "@/lib/blitz/saved-session";
 import { noSubscription } from "@/lib/swipes/saved-shift";
 
@@ -24,6 +44,18 @@ import { noSubscription } from "@/lib/swipes/saved-shift";
 const SETTLED_REJECTIONS: BlitzRejection[] = ["StaleQuestion", "QuestionNotShown", "SessionNotRunning"];
 const LOADING = "Собираем Вопросы…";
 const RESUMING = "Возвращаемся к Блицу…";
+
+/** Как отвечать на Вопрос каждого типа: бейдж на Вопросе и строка на стартовом экране. */
+const QUESTION_TYPES: Record<BlitzQuestionType, { label: string; icon: LucideIcon; howTo: string }> = {
+  single: { label: "Один ответ", icon: CircleDot, howTo: "Нажмите верный вариант — ответ засчитается сразу." },
+  multiple: { label: "Несколько ответов", icon: ListChecks, howTo: "Отметьте все верные варианты и нажмите «Ответить»." },
+  sequence: { label: "По порядку", icon: ListOrdered, howTo: "Нажимайте шаги с первого до последнего и нажмите «Ответить»." },
+};
+
+/** Отсчёт «на исходе» — последние 20% лимита, но не меньше 3 с: при 15–25 с на Вопрос двух секунд Смены мало. */
+function urgentMsOf(limitMs: number) {
+  return Math.max(3000, limitMs * 0.2);
+}
 
 type Phase =
   /** Открыли экран: продолжаем незаконченную сессию этого браузера, если она есть, иначе старт. */
@@ -67,8 +99,8 @@ function sessionGone(error: unknown) {
  * (нажатие на вариант — ответ), с несколькими (отметить варианты и «Ответить») или последовательность
  * (расставить шаги по порядку и «Ответить»), обратный
  * отсчёт от показа; истёк — «Время вышло». После ответа — панель с верными вариантами
- * и Пояснением, следующий Вопрос (и его таймер) — по «Дальше». Незаконченную сессию экран
- * продолжает и после перезагрузки.
+ * и Пояснением, следующий Вопрос (и его таймер) — по «Дальше» после верного ответа или «Понятно»
+ * после ошибки. Незаконченную сессию экран продолжает и после перезагрузки.
  */
 export function BlitzSession() {
   const [session, setSession] = useState<Session | null>(null);
@@ -248,7 +280,7 @@ export function BlitzSession() {
     return <p className="m-auto text-sm text-muted-foreground">{phase.kind === "loading" ? phase.label : LOADING}</p>;
   }
 
-  if (phase.kind === "finished") return <BlitzSummary session={session} onRestart={restart} />;
+  if (phase.kind === "finished") return <BlitzSummary session={session} onRestart={start} />;
 
   const showingFeedback = (phase.kind === "feedback" || phase.kind === "advancing") && last;
   const question = session.question;
@@ -290,16 +322,30 @@ export function BlitzSession() {
 function BlitzStart({ onStart }: { onStart: () => void }) {
   return (
     <div className="flex flex-1 flex-col gap-3">
-      <section className="flex flex-col items-center gap-3 rounded-xl bg-card p-6 text-center">
-        <span className="grid size-14 place-items-center rounded-full bg-brand-soft">
-          <Zap className="size-7 text-brand" aria-hidden />
-        </span>
-        <h1 className="text-2xl font-extrabold tracking-tight">Блиц</h1>
-        <p className="text-sm text-muted-foreground">
-          Вопросы на время: выберите верный ответ, отметьте все верные или расставьте шаги по порядку, пока не закончился
-          отсчёт. После каждого ответа — Пояснение с пунктом Источника.
-        </p>
-        <p className="flex items-center gap-1.5 text-sm font-bold text-brand">
+      <section className="flex flex-col gap-5 rounded-xl bg-card p-6">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <span className="grid size-14 place-items-center rounded-full bg-brand-soft">
+            <Zap className="size-7 text-brand" aria-hidden />
+          </span>
+          <h1 className="text-2xl font-extrabold tracking-tight">Блиц</h1>
+          <p className="text-sm text-muted-foreground">
+            Вопросы на время по разным Темам. После каждого ответа — Пояснение с пунктом Источника.
+          </p>
+        </div>
+        <ul className="flex flex-col gap-3">
+          {Object.entries(QUESTION_TYPES).map(([type, { label, icon: Icon, howTo }]) => (
+            <li key={type} className="flex gap-3">
+              <span className="grid size-10 shrink-0 place-items-center rounded-full bg-brand-soft text-brand">
+                <Icon className="size-5" aria-hidden />
+              </span>
+              <span className="flex flex-col gap-0.5">
+                <span className="font-extrabold">{label}</span>
+                <span className="text-sm leading-snug text-muted-foreground">{howTo}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+        <p className="flex items-center justify-center gap-1.5 text-sm font-bold text-brand">
           <Timer className="size-4" aria-hidden />
           Таймер на каждый Вопрос
         </p>
@@ -349,19 +395,30 @@ function QuestionCard({
   }
 
   return (
-    <article aria-label="Вопрос" className="flex flex-col gap-4 rounded-xl bg-card p-5">
+    <article
+      aria-label="Вопрос"
+      className="flex flex-col gap-4 rounded-xl bg-card p-5 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300"
+    >
       <div className="flex items-center gap-3">
         <DeckProgress progress={session.progress} />
-        <Countdown limitMs={question.timeLimitMs} startedAt={startedAt} stoppedAt={stoppedAt} onExpire={onExpire} />
+        <Countdown
+          limitMs={question.timeLimitMs}
+          startedAt={startedAt}
+          stoppedAt={stoppedAt}
+          urgentMs={urgentMsOf(question.timeLimitMs)}
+          onExpire={onExpire}
+        />
       </div>
-      <Badge variant="secondary" className="h-6 w-fit gap-1.5 bg-background px-2.5 font-bold">
-        <TopicIcon topic={question.topic} className="text-brand" />
-        {question.topic}
-      </Badge>
+      <div className="flex flex-wrap gap-1.5">
+        <Badge variant="secondary" className="h-6 w-fit gap-1.5 bg-background px-2.5 font-bold">
+          <TopicIcon topic={question.topic} className="text-brand" />
+          {question.topic}
+        </Badge>
+        <QuestionTypeBadge type={question.type} />
+      </div>
       <p className="text-lg leading-snug font-bold">{question.statement}</p>
-      {multiple ? <p className="-mt-2 text-sm text-muted-foreground">Верных несколько — отметьте все</p> : null}
       {sequence ? (
-        <p className="-mt-2 text-sm text-muted-foreground">Нажимайте шаги по порядку, с первого. Повторное нажатие убирает шаг</p>
+        <p className="-mt-2 text-sm text-muted-foreground">Нажимайте шаги с первого. Повторное нажатие убирает шаг</p>
       ) : null}
       <div className="grid gap-2">
         {question.options.map((option) => {
@@ -398,9 +455,27 @@ function QuestionCard({
         </Button>
       ) : null}
       {sending !== undefined ? (
-        <p className="text-center text-sm font-bold text-muted-foreground">Сверяем ответ…</p>
+        // С задержкой, как в Смене: быстрый ответ сервера не мигает строкой.
+        <p
+          role="status"
+          className="flex items-center justify-center gap-2 text-sm font-bold text-muted-foreground animate-in fade-in fill-mode-backwards delay-500 duration-200"
+        >
+          <LoaderCircle className="size-4 motion-safe:animate-spin" aria-hidden />
+          Сверяем ответ…
+        </p>
       ) : null}
     </article>
+  );
+}
+
+/** Бейдж типа Вопроса рядом с Темой: как отвечать, видно до чтения формулировки. */
+function QuestionTypeBadge({ type }: { type: BlitzQuestionType }) {
+  const { label, icon: Icon } = QUESTION_TYPES[type];
+  return (
+    <Badge variant="secondary" className="h-6 w-fit gap-1.5 bg-brand-soft px-2.5 font-bold">
+      <Icon className="text-brand" aria-hidden />
+      {label}
+    </Badge>
   );
 }
 
@@ -436,10 +511,17 @@ function FeedbackPanel({
   const finished = session.status !== "running";
 
   return (
-    <section aria-live="polite" className="flex flex-col gap-3 rounded-xl bg-card p-5">
+    <section
+      aria-live="polite"
+      className="flex flex-col gap-3 rounded-xl bg-card p-5 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-4 motion-safe:duration-300"
+    >
       <DeckProgress progress={session.progress} />
       <div className="flex items-center justify-between gap-2">
-        <VerdictLabel verdict={outcome.verdict} timedOut={outcome.timedOut} className="text-lg" />
+        <VerdictLabel
+          verdict={outcome.verdict}
+          timedOut={outcome.timedOut}
+          className="text-lg motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-50 motion-safe:fill-mode-backwards motion-safe:delay-150 motion-safe:duration-300"
+        />
         {outcome.timedOut ? null : (
           <span className="text-xs font-bold text-muted-foreground tabular-nums">
             Ответ за {formatSeconds(outcome.elapsedMs)} с
@@ -461,7 +543,13 @@ function FeedbackPanel({
                 key={option.id}
                 className={cn(
                   "flex items-start gap-2 rounded-lg border px-3 py-2.5 text-sm",
-                  isCorrect ? "border-brand bg-brand-soft font-bold" : isWrongPick ? "border-danger bg-danger-soft" : "border-border text-muted-foreground",
+                  isMissed
+                    ? "border-dashed border-brand bg-card font-bold"
+                    : isCorrect
+                      ? "border-brand bg-brand-soft font-bold"
+                      : isWrongPick
+                        ? "border-danger bg-danger-soft"
+                        : "border-border text-muted-foreground",
                 )}
               >
                 {isCorrect ? (
@@ -472,7 +560,7 @@ function FeedbackPanel({
                   <span className="size-4 shrink-0" aria-hidden />
                 )}
                 <span className="flex-1">{option.text}</span>
-                {isMissed ? <span className="shrink-0 text-xs font-bold text-muted-foreground">Не отмечен</span> : null}
+                {isMissed ? <span className="shrink-0 text-xs font-bold text-warning-foreground">Не отмечен</span> : null}
               </li>
             );
           })}
@@ -483,7 +571,7 @@ function FeedbackPanel({
       </p>
       <SourceLine source={outcome.explanation.source} />
       <Button autoFocus disabled={busy} onClick={onContinue} className="mt-1 h-12 text-base font-bold">
-        {finished ? "К итогу" : "Дальше"}
+        {finished ? "К итогу" : outcome.verdict === "correct" ? "Дальше" : "Понятно"}
       </Button>
     </section>
   );
@@ -505,15 +593,21 @@ function SequenceFeedback({
         const text = question.options.find((option) => option.id === stepId)?.text;
         const inPlace = selected?.[at] === stepId;
         const theirs = selected ? selected.indexOf(stepId) + 1 : 0;
+        const misplaced = selected !== null && !inPlace;
         return (
           <li
             key={stepId}
             className={cn(
               "flex items-start gap-2 rounded-lg border px-3 py-2.5 text-sm font-bold",
-              selected && !inPlace ? "border-danger bg-danger-soft" : "border-brand bg-brand-soft",
+              misplaced ? "border-danger bg-danger-soft" : "border-brand bg-brand-soft",
             )}
           >
-            <span className="grid size-5 shrink-0 place-items-center rounded-full bg-brand text-xs text-white tabular-nums">
+            <span
+              className={cn(
+                "grid size-5 shrink-0 place-items-center rounded-full text-xs text-white tabular-nums",
+                misplaced ? "bg-danger" : "bg-brand",
+              )}
+            >
               {at + 1}
             </span>
             <span className="flex-1">{text}</span>
@@ -521,7 +615,7 @@ function SequenceFeedback({
               inPlace ? (
                 <CircleCheck className="mt-0.5 size-4 shrink-0 text-brand" aria-label="На своём месте" />
               ) : (
-                <span className="shrink-0 text-xs text-danger tabular-nums">У вас №{theirs}</span>
+                <span className="shrink-0 text-xs font-extrabold text-danger tabular-nums">У вас №{theirs}</span>
               )
             ) : null}
           </li>
@@ -531,13 +625,24 @@ function SequenceFeedback({
   );
 }
 
+/** Заголовок итога по доле верных: без ошибок, половина и больше, меньше половины. */
+function summaryHeadline({ correct, total }: BlitzResult) {
+  if (correct === total) return { title: "Отлично, без ошибок", icon: CircleCheck, tone: "text-brand" };
+  if (correct * 2 >= total) return { title: "Блиц пройден", icon: Zap, tone: "text-brand" };
+  return { title: "Есть что повторить", icon: RotateCcw, tone: "text-warning-foreground" };
+}
+
 function BlitzSummary({ session, onRestart }: { session: Session; onRestart: () => void }) {
   const result = session.result!;
+  const { title, icon: Icon, tone } = summaryHeadline(result);
   return (
     <div className="flex flex-1 flex-col gap-3">
-      <section className="flex flex-col items-center gap-2 rounded-xl bg-card p-6 text-center">
-        <Zap className="size-10 text-brand" aria-hidden />
-        <h1 className="text-2xl font-extrabold tracking-tight">Блиц пройден</h1>
+      <section className="flex flex-col items-center gap-2 rounded-xl bg-card p-6 text-center motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-300">
+        <Icon className={cn("size-10", tone)} aria-hidden />
+        <h1 className="text-2xl font-extrabold tracking-tight">{title}</h1>
+        <div className="w-full py-1">
+          <DeckProgress progress={session.progress} />
+        </div>
         <p className="text-sm">
           Верно:{" "}
           <b className="tabular-nums">

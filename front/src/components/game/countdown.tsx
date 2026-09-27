@@ -5,7 +5,7 @@ import { cn } from "cn";
 
 const RADIUS = 15;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
-/** С какого остатка кольцо оранжевое. */
+/** По умолчанию с какого остатка отсчёт «на исходе»: кольцо оранжевое, цифра тикает. */
 const URGENT_MS = 2000;
 
 /**
@@ -16,11 +16,14 @@ export function Countdown({
   limitMs,
   startedAt,
   stoppedAt,
+  urgentMs = URGENT_MS,
   onExpire,
 }: {
   limitMs: number;
   startedAt: number | null;
   stoppedAt: number | null;
+  /** С какого остатка отсчёт «на исходе». */
+  urgentMs?: number;
   onExpire: () => void;
 }) {
   const [now, setNow] = useState(() => performance.now());
@@ -42,12 +45,15 @@ export function Countdown({
   const elapsed =
     startedAt === null ? 0 : Math.min(limitMs, Math.max(0, (stoppedAt ?? now) - startedAt));
   const remaining = limitMs - elapsed;
-  const urgent = startedAt !== null && remaining <= URGENT_MS;
+  const seconds = Math.ceil(remaining / 1000);
+  const urgent = startedAt !== null && remaining <= urgentMs;
+  /** Идущий отсчёт на исходе: цифра заново монтируется каждую секунду и «тикает». */
+  const ticking = urgent && stoppedAt === null;
 
   return (
     <span
       role="timer"
-      aria-label={`Осталось ${Math.ceil(remaining / 1000)} с`}
+      aria-label={`Осталось ${seconds} с`}
       className="relative grid size-9 shrink-0 place-items-center"
     >
       <svg viewBox="0 0 36 36" className="absolute inset-0 -rotate-90" aria-hidden>
@@ -68,13 +74,15 @@ export function Countdown({
         />
       </svg>
       <span
+        key={ticking ? seconds : "steady"}
         className={cn(
           "text-xs font-extrabold tabular-nums",
           startedAt === null && "text-muted-foreground",
           urgent && "text-warning-foreground",
+          ticking && "motion-safe:animate-[countdown-tick_400ms_ease-out]",
         )}
       >
-        {Math.ceil(remaining / 1000)}
+        {seconds}
       </span>
     </span>
   );

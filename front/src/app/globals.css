@@ -163,6 +163,16 @@
   }
 }
 
+/* Цифра обратного отсчёта на исходе «тикает» каждую секунду. */
+@keyframes countdown-tick {
+  from {
+    transform: scale(1.4);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
