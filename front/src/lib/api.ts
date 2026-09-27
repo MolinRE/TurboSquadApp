@@ -121,19 +121,62 @@ const demoLoginErrors: Record<number, string> = {
   404: "Вход без пароля на сервере выключен",
 };
 
-/** Кнопка «Войти как…»: бэкенд выдаёт токен демо-аккаунту без пароля. */
-export async function demoLogin(username: string): Promise<TokenResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/auth/demo-login`, {
+/** Получает токен и запоминает его. Сообщения об отказе — по коду ответа. */
+async function requestToken(path: string, body: unknown, errors: Record<number, string>): Promise<TokenResponse> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username }),
+    body: JSON.stringify(body),
   });
   if (!response.ok) {
-    throw new ApiError(demoLoginErrors[response.status] ?? "Не удалось войти", response.status);
+    throw new ApiError(errors[response.status] ?? "Не удалось войти", response.status);
   }
   const result = (await response.json()) as TokenResponse;
   window.localStorage.setItem(TOKEN_KEY, result.accessToken);
   return result;
+}
+
+/** Кнопка «Войти как…»: бэкенд выдаёт токен демо-аккаунту без пароля. */
+export function demoLogin(username: string): Promise<TokenResponse> {
+  return requestToken("/api/auth/demo-login", { username }, demoLoginErrors);
+}
+
+/** Вход по логину и паролю. Причину отказа бэкенд не раскрывает. */
+export function login(username: string, password: string): Promise<TokenResponse> {
+  return requestToken("/api/auth/login", { username, password }, { 401: "Неверный логин или пароль" });
+}
+
+export type Registration = {
+  username: string;
+  displayName: string;
+  depotId: string;
+  brigadeId: string;
+  password: string;
+};
+
+/** Регистрация Проводника. Отказ валидации — ApiError с текстом по первому полю с ошибкой. */
+export async function register(registration: Registration): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(registration),
+  });
+  if (response.ok) return;
+  const payload = (await readPayload(response)) as { errors?: Record<string, string[]> } | undefined;
+  throw new ApiError(registrationError(payload?.errors), response.status);
+}
+
+// Бэкенд отвечает ValidationProblem с английскими текстами; длины полей форма проверяет сама.
+function registrationError(errors: Record<string, string[]> | undefined): string {
+  const [key, messages] = Object.entries(errors ?? {})[0] ?? [];
+  const field = key?.toLowerCase();
+  if (field === "username") {
+    return messages!.some((message) => message.includes("already")) ? "Этот логин уже занят" : "Логин — от 3 до 100 символов";
+  }
+  if (field === "password") return "Пароль — не короче 8 символов";
+  if (field === "displayname") return "Укажите имя";
+  if (field === "depotid" || field === "brigadeid") return "Выберите Бригаду из списка";
+  return "Не удалось зарегистрироваться";
 }
 
 /** Выход из аккаунта: токен забывается. */
