@@ -15,7 +15,8 @@ public class KnowledgeScoreApiTests
         using var factory = new TripApiFactory();
         await factory.Database(async db =>
         {
-            var questions = await db.Questions.OrderBy(q => q.Id).ToListAsync();
+            // Колода из 4 свайпов: Вопросы Блица сортируются раньше и в Смену всё равно не попадают.
+            var questions = await db.Questions.Where(q => q.Type == "swipe").OrderBy(q => q.Id).ToListAsync();
             foreach (var item in questions.Skip(4)) item.Status = "draft";
             await db.SaveChangesAsync();
             return true;
