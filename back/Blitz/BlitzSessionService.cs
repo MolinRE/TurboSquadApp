@@ -9,7 +9,7 @@ namespace TurboSquadApp.Blitz;
 /// <summary>
 /// Блиц через API (#41, #42): колода — снимок опубликованных Вопросов single и multiple на старте, время по часам сервера, ответы
 /// в базе. Вердикт считает сервер, клиент только показывает; верные варианты уходят клиенту лишь в ответе на Вопрос.
-/// multiple верен только за точный набор верных вариантов в любом порядке: частичных Очков нет.
+/// multiple верен только за точный набор верных вариантов в любом порядке: частичного зачёта нет.
 /// </summary>
 public sealed class BlitzSessionService(AppDbContext dbContext, TimeProvider clock, Random random)
 {
@@ -105,11 +105,11 @@ public sealed class BlitzSessionService(AppDbContext dbContext, TimeProvider clo
     /// </summary>
     private static IResult? InvalidSelection(BlitzQuestion question, IReadOnlyList<string> selectedOptionIds)
     {
-        var known = selectedOptionIds.All(id => question.Options.Any(option => option.Id == id))
+        var validIds = selectedOptionIds.All(id => question.Options.Any(option => option.Id == id))
             && selectedOptionIds.Distinct().Count() == selectedOptionIds.Count;
-        if (question.Type == QuestionTypes.Single && (selectedOptionIds.Count != 1 || !known))
+        if (question.Type == QuestionTypes.Single && (selectedOptionIds.Count != 1 || !validIds))
             return Rejected("InvalidSelection", "Для Вопроса с одним ответом выберите ровно один из его вариантов");
-        if (selectedOptionIds.Count == 0 || !known)
+        if (selectedOptionIds.Count == 0 || !validIds)
             return Rejected("InvalidSelection", "Отметьте хотя бы один вариант этого Вопроса, каждый не больше раза");
         return null;
     }
