@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
-import { ScreenPlaceholder } from "@/components/shell/screen-placeholder";
+import { EventEditor } from "@/components/cms/event-editor";
 import { getScreen } from "@/lib/screens";
 
 export const metadata: Metadata = { title: getScreen("event").title };
 
-export default function Page() {
-  return <ScreenPlaceholder id="event" />;
+export default async function Page({ params }: PageProps<"/cms/events/[id]">) {
+  const { id } = await params;
+  return <EventEditor eventId={id} />;
 }
