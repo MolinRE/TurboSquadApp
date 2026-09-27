@@ -30,7 +30,7 @@ public class ContentSeederTests
             ["standard", "comfort", "business", "first"],
             await db.ServiceClasses.OrderBy(c => c.SortOrder).Select(c => c.Code).ToListAsync());
         Assert.Equal(
-            [("sit-06", 1), ("sit-33", 1), ("zastup", 1)],
+            [("sit-06", 2), ("sit-33", 2), ("zastup", 1)],
             (await db.EventDocuments.ToListAsync()).Select(e => (e.EventId, e.Version)).Order());
         var trip = Assert.Single(await db.TripSettings.ToListAsync());
         Assert.Equal("zastup", JsonSerializer.Deserialize<TripSettings>(trip.Document, EventJson.Options)!.ShiftStartEvent);

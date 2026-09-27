@@ -1,6 +1,6 @@
 {
   "id": "sit-33",
-  "version": 1,
+  "version": 2,
   "title": "Два пассажира на одно место",
   "topic": "Посадка и документы",
   "categories": [
@@ -12,7 +12,7 @@
   "steps": [
     {
       "id": "s1",
-      "answerType": "buttons",
+      "answerType": "voice",
       "timerSec": 20,
       "situation": "На одно место претендуют два пассажира, у каждого есть билет. Оба раздражены и ждут, что вы скажете.",
       "variants": [
@@ -66,7 +66,7 @@
     },
     {
       "id": "s2",
-      "answerType": "buttons",
+      "answerType": "voice",
       "situation": "Оба билета действительны и оформлены на одно и то же место.",
       "variants": [
         {
@@ -151,7 +151,7 @@
     },
     {
       "id": "s3",
-      "answerType": "buttons",
+      "answerType": "voice",
       "situation": "Начальник поезда уточнил: сбой при продаже билетов. В поезде есть свободные места.",
       "variants": [
         {
@@ -202,7 +202,7 @@
     },
     {
       "id": "s4",
-      "answerType": "buttons",
+      "answerType": "voice",
       "situation": "Пассажир соглашается пересесть.",
       "variants": [
         {

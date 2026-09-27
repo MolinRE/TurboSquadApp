@@ -59,6 +59,23 @@ public sealed class TripApiFactory : WebApplicationFactory<Program>
         return client;
     }
 
+    public async Task<HttpClient> CreateManagerClient()
+    {
+        var user = new AppUser { Id = Guid.NewGuid(), Username = $"manager-{Guid.NewGuid():N}", DisplayName = "Руководитель" };
+        user.Roles.Add(new AppUserRole { UserId = user.Id, Role = UserRoles.Manager });
+        using (var scope = Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Users.Add(user);
+            await db.SaveChangesAsync();
+        }
+
+        var client = CreateClient();
+        var token = Services.GetRequiredService<JwtTokenService>().CreateToken(user);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.AccessToken);
+        return client;
+    }
+
     /// <summary>Запрос к базе приложения напрямую: журнал Рейса и правка контента посреди Рейса.</summary>
     public async Task<T> Database<T>(Func<AppDbContext, Task<T>> query)
     {
@@ -81,7 +98,13 @@ public sealed class FakeVoicePipeline : IVoicePipeline
             (int)'x' => new VoicePipelineResult("Невнятный ответ", "a", 0.2, 8, false, "LowConfidence", "Низкая уверенность", "fake-laya"),
             (int)'y' => VoicePipelineResult.Failure("SttUnavailable", "STT недоступен", 7),
             (int)'a' or (int)'b' or (int)'c' => new VoicePipelineResult(
-                $"Голосовой ответ {(char)marker}", ((char)marker).ToString(), 0.95, 12, true, null, null, "fake-laya"),
+                $"Голосовой ответ {(char)marker}", ((char)marker).ToString(), 0.95, 12, true, null, null, "fake-laya",
+                new LayaAssessment(0.8, 0.9,
+                    new Dictionary<string, double>
+                    {
+                        ["acknowledge"] = 0.8, ["rule"] = 0.9, ["solution"] = 0.7, ["reassure"] = 0.6,
+                    }, 0.05, 0.95),
+                5, 7),
             _ => VoicePipelineResult.Failure("SttInvalidResponse", "Пустой тестовый ответ", 4),
         };
     }
@@ -103,7 +126,7 @@ public sealed class FakeLlmClient : ILlmClient
             await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
             yield break;
         }
-        if (Fail || request.UserPrompt.Contains("\"choice\":\"b\"", StringComparison.Ordinal))
+        if (Fail)
             throw new LlmProviderException("LlmProviderError", "Тестовая ошибка Qwen");
         yield return new LlmToken("Пассажир отвечает", "fake-qwen");
     }

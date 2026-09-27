@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using TurboSquadApp.Data;
@@ -11,9 +12,11 @@ using TurboSquadApp.Data;
 namespace TurboSquadApp.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260927080529_AddVoiceScoring")]
+    partial class AddVoiceScoring
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -218,88 +221,6 @@ namespace TurboSquadApp.Data.Migrations
                     b.ToTable("event_documents", (string)null);
                 });
 
-            modelBuilder.Entity("TurboSquadApp.Data.QuestionRecord", b =>
-                {
-                    b.Property<string>("Id")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("id");
-
-                    b.Property<double>("BaseFrequency")
-                        .HasColumnType("double precision")
-                        .HasColumnName("base_frequency");
-
-                    b.Property<string>("Categories")
-                        .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("categories");
-
-                    b.Property<string>("ExplanationKeyFact")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("explanation_key_fact");
-
-                    b.Property<string>("ExplanationText")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("explanation_text");
-
-                    b.Property<string>("Options")
-                        .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("options");
-
-                    b.Property<string>("Quote")
-                        .HasColumnType("text")
-                        .HasColumnName("quote");
-
-                    b.Property<string>("ServiceClasses")
-                        .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("service_classes");
-
-                    b.Property<string>("Source")
-                        .IsRequired()
-                        .HasMaxLength(300)
-                        .HasColumnType("character varying(300)")
-                        .HasColumnName("source");
-
-                    b.Property<string>("Statement")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("statement");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("status");
-
-                    b.Property<int?>("TimeLimitSec")
-                        .HasColumnType("integer")
-                        .HasColumnName("time_limit_sec");
-
-                    b.Property<string>("Topic")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("topic");
-
-                    b.Property<string>("Type")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("type");
-
-                    b.HasKey("Id")
-                        .HasName("pk_questions");
-
-                    b.HasIndex("Type", "Status")
-                        .HasDatabaseName("ix_questions_type_status");
-
-                    b.ToTable("questions", (string)null);
-                });
-
             modelBuilder.Entity("TurboSquadApp.Data.ScaleRecord", b =>
                 {
                     b.Property<string>("Code")
@@ -370,130 +291,6 @@ namespace TurboSquadApp.Data.Migrations
                         .HasName("pk_service_classes");
 
                     b.ToTable("service_classes", (string)null);
-                });
-
-            modelBuilder.Entity("TurboSquadApp.Data.SwipeAnswerRecord", b =>
-                {
-                    b.Property<Guid>("ShiftId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("shift_id");
-
-                    b.Property<int>("Seq")
-                        .HasColumnType("integer")
-                        .HasColumnName("seq");
-
-                    b.Property<string>("Answer")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("answer");
-
-                    b.Property<DateTimeOffset>("AnsweredAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("answered_at");
-
-                    b.Property<int>("ElapsedMs")
-                        .HasColumnType("integer")
-                        .HasColumnName("elapsed_ms");
-
-                    b.Property<bool>("IsRepeat")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_repeat");
-
-                    b.Property<string>("QuestionId")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("question_id");
-
-                    b.Property<string>("ScaleChanges")
-                        .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("scale_changes");
-
-                    b.Property<string>("Verdict")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("verdict");
-
-                    b.HasKey("ShiftId", "Seq")
-                        .HasName("pk_swipe_answers");
-
-                    b.HasIndex("QuestionId")
-                        .HasDatabaseName("ix_swipe_answers_question_id");
-
-                    b.ToTable("swipe_answers", (string)null);
-                });
-
-            modelBuilder.Entity("TurboSquadApp.Data.SwipeShiftRecord", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<DateTimeOffset?>("CardShownAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("card_shown_at");
-
-                    b.Property<int?>("Cycle")
-                        .HasColumnType("integer")
-                        .HasColumnName("cycle");
-
-                    b.Property<string>("Deck")
-                        .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("deck");
-
-                    b.Property<string>("FailureScale")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasColumnName("failure_scale");
-
-                    b.Property<DateTimeOffset?>("FinishedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("finished_at");
-
-                    b.Property<string>("Mode")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("mode");
-
-                    b.Property<Guid?>("PreviousCycleId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("previous_cycle_id");
-
-                    b.Property<string>("Scales")
-                        .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("scales");
-
-                    b.Property<DateTimeOffset>("StartedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("started_at");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("status");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("user_id");
-
-                    b.HasKey("Id")
-                        .HasName("pk_swipe_shifts");
-
-                    b.HasIndex("PreviousCycleId")
-                        .HasDatabaseName("ix_swipe_shifts_previous_cycle_id");
-
-                    b.HasIndex("UserId")
-                        .HasDatabaseName("ix_swipe_shifts_user_id");
-
-                    b.ToTable("swipe_shifts", (string)null);
                 });
 
             modelBuilder.Entity("TurboSquadApp.Data.TripJournalRecord", b =>
@@ -797,39 +594,6 @@ namespace TurboSquadApp.Data.Migrations
                         .HasConstraintName("fk_brigades_depots_depot_id");
 
                     b.Navigation("Depot");
-                });
-
-            modelBuilder.Entity("TurboSquadApp.Data.SwipeAnswerRecord", b =>
-                {
-                    b.HasOne("TurboSquadApp.Data.QuestionRecord", null)
-                        .WithMany()
-                        .HasForeignKey("QuestionId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_swipe_answers_questions_question_id");
-
-                    b.HasOne("TurboSquadApp.Data.SwipeShiftRecord", null)
-                        .WithMany()
-                        .HasForeignKey("ShiftId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_swipe_answers_swipe_shifts_shift_id");
-                });
-
-            modelBuilder.Entity("TurboSquadApp.Data.SwipeShiftRecord", b =>
-                {
-                    b.HasOne("TurboSquadApp.Data.SwipeShiftRecord", null)
-                        .WithMany()
-                        .HasForeignKey("PreviousCycleId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_swipe_shifts_swipe_shifts_previous_cycle_id");
-
-                    b.HasOne("TurboSquadApp.Data.AppUser", null)
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_swipe_shifts_users_user_id");
                 });
 
             modelBuilder.Entity("TurboSquadApp.Data.TripJournalRecord", b =>

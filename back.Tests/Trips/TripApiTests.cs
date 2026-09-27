@@ -36,11 +36,32 @@ public class TripApiTests(TripApiFactory factory) : IClassFixture<TripApiFactory
 
         var decisions = await factory.Database(db => db.TripJournal.Where(r => r.TripId == trip.Id && r.Kind == "decision").ToListAsync());
         Assert.Equal(8, decisions.Count);
-        Assert.All(decisions, d => Assert.Equal((1, false), (d.EventVersion, d.ElapsedMs is null)));
+        Assert.All(decisions, d => Assert.Equal((d.EventId == "zastup" ? 1 : 2, false), (d.EventVersion, d.ElapsedMs is null)));
         var voiceAttempts = await factory.Database(db => db.TripJournal.Where(r => r.TripId == trip.Id && r.Kind == "voiceAttempt").ToListAsync());
-        Assert.Equal(("Голосовой ответ a", true, "a"),
-            (Assert.Single(voiceAttempts).VoiceTranscript, Assert.Single(voiceAttempts).VoiceApplied, Assert.Single(voiceAttempts).VoiceChoice));
-        Assert.Single(debrief["voiceAttempts"]!.AsArray());
+        Assert.Equal(5, voiceAttempts.Count);
+        Assert.All(voiceAttempts, attempt => Assert.True(attempt.VoiceApplied));
+        Assert.Contains(decisions, decision => decision.EventId == "sit-06" && decision.StepId == "s2" && decision.VariantId == "a");
+        var debriefVoices = debrief["voiceAttempts"]!.AsArray();
+        Assert.Equal(5, debriefVoices.Count);
+        Assert.Equal(
+            [("sit-06", 2, "s1"), ("sit-33", 2, "s1"), ("sit-33", 2, "s2"), ("sit-33", 2, "s3"), ("sit-33", 2, "s4")],
+            debriefVoices.Select(attempt => ((string)attempt!["eventId"]!, (int)attempt["eventVersion"]!, (string)attempt["stepId"]!)));
+        Assert.All(debriefVoices, voiceAttempt =>
+        {
+            Assert.Equal(0.8, voiceAttempt!["score"]!.GetValue<double>(), 3);
+            Assert.Equal(4, voiceAttempt["roleStages"]!.AsObject().Count);
+            Assert.Equal(0.05, voiceAttempt["safetyViolation"]!.GetValue<double>(), 3);
+            Assert.Equal(5, voiceAttempt["sttLatencyMs"]!.GetValue<int>());
+            Assert.Equal(7, voiceAttempt["layaLatencyMs"]!.GetValue<int>());
+            Assert.NotNull(voiceAttempt["llmLatencyMs"]);
+        });
+
+        using var manager = await factory.CreateManagerClient();
+        var analytics = (await manager.GetFromJsonAsync<JsonNode>("/api/analytics/voice"))!;
+        Assert.True((int)analytics["attempts"]! >= 1);
+        Assert.Equal(0, (int)analytics["fallbackAttempts"]!);
+        Assert.Contains(analytics["steps"]!.AsArray(), step =>
+            (string)step!["eventId"]! == "sit-06" && (string)step["stepId"]! == "s1");
     }
 
     [Fact]
@@ -66,7 +87,7 @@ public class TripApiTests(TripApiFactory factory) : IClassFixture<TripApiFactory
         Assert.Equal(("failed", "scale", "loyalty"), (record.Status, record.FailureCause, record.FailureScale));
         Assert.NotNull(record.FinishedAt);
         var interrupted = await factory.Database(db => db.TripJournal.SingleAsync(r => r.TripId == trip.Id && r.Result == "interrupted"));
-        Assert.Equal(("sit-33", 1), (interrupted.EventId, interrupted.EventVersion));
+        Assert.Equal(("sit-33", 2), (interrupted.EventId, interrupted.EventVersion));
     }
 
     [Fact]
@@ -77,9 +98,31 @@ public class TripApiTests(TripApiFactory factory) : IClassFixture<TripApiFactory
         await trip.Proactive("tech");
         await trip.Choose("a", "a");                  // №33 → s3, где «место классом выше» скрыто в Первом классе
 
-        Assert.Equal(("sit-33", "s3"), (trip.EventId, trip.StepId));
-        Assert.Equal(["a"], trip.Json["step"]!["variants"]!.AsArray().Select(v => (string)v!["id"]!));
-        Assert.Equal("HiddenVariant", await trip.Rejected($"/api/trips/{trip.Id}/variant", new { eventId = "sit-33", stepId = "s3", variantId = "b" }));
+        Assert.Equal(("sit-33", "s3", "voice"), (trip.EventId, trip.StepId, trip.AnswerType));
+        var rejected = await trip.PostVoice("b");
+        Assert.Equal(HttpStatusCode.Conflict, rejected.StatusCode);
+        Assert.Equal("HiddenVariant", (string)(await rejected.Content.ReadFromJsonAsync<JsonNode>())!["reason"]!);
+    }
+
+    [Fact]
+    public async Task Escalation_conversation_uses_voice_for_second_spoken_step()
+    {
+        var trip = await TripClient.Start(factory, "business");
+        await trip.Choose("a", "a");
+        await trip.Proactive("obhod");
+        await trip.Choose("b");
+
+        Assert.Equal(("sit-06", "s3", "voice"), (trip.EventId, trip.StepId, trip.AnswerType));
+        Assert.Equal("VoiceStepRequiresVoice", await trip.Rejected($"/api/trips/{trip.Id}/variant",
+            new { eventId = trip.EventId, stepId = trip.StepId, variantId = "a" }));
+
+        await trip.Choose("a");
+        Assert.Equal("sit-33", trip.EventId);
+        var voiceSteps = await factory.Database(db => db.TripJournal
+            .Where(row => row.TripId == trip.Id && row.Kind == "voiceAttempt")
+            .Select(row => row.StepId)
+            .ToListAsync());
+        Assert.Equal(["s1", "s3"], voiceSteps);
     }
 
     [Fact]
@@ -192,10 +235,19 @@ public class TripApiTests(TripApiFactory factory) : IClassFixture<TripApiFactory
 
         var first = await trip.PostVoice("b", attemptId);
         Assert.Equal(HttpStatusCode.OK, first.StatusCode);
-        var streamed = await trip.StreamReply(attemptId);
-        var sse = await streamed.Content.ReadAsStringAsync();
-        Assert.Contains("event: error", sse);
-        Assert.Contains("LlmProviderError", sse);
+        var fakeLlm = factory.Services.GetRequiredService<FakeLlmClient>();
+        fakeLlm.Fail = true;
+        try
+        {
+            var streamed = await trip.StreamReply(attemptId);
+            var sse = await streamed.Content.ReadAsStringAsync();
+            Assert.Contains("event: error", sse);
+            Assert.Contains("LlmProviderError", sse);
+        }
+        finally
+        {
+            fakeLlm.Fail = false;
+        }
 
         var row = await factory.Database(db => db.TripJournal.SingleAsync(item => item.TripId == trip.Id && item.Kind == "voiceAttempt"));
         Assert.Equal("LlmProviderError", row.VoiceReplyError);
@@ -253,7 +305,7 @@ public class TripApiTests(TripApiFactory factory) : IClassFixture<TripApiFactory
 
         Assert.Equal(("s2", 65, 85), (trip.StepId, trip.Scales.Loyalty, trip.Scales.Safety));
         var timedOut = await factory.Database(db =>
-            db.TripJournal.SingleAsync(r => r.TripId == trip.Id && r.EventId == "sit-33" && r.StepId == "s1"));
+            db.TripJournal.SingleAsync(r => r.TripId == trip.Id && r.Kind == "decision" && r.EventId == "sit-33" && r.StepId == "s1"));
         Assert.Equal((true, null, 21500), (timedOut.TimedOut, timedOut.VariantId, timedOut.ElapsedMs));
     }
 
@@ -297,6 +349,8 @@ public class TripApiTests(TripApiFactory factory) : IClassFixture<TripApiFactory
             Assert.True(response.IsSuccessStatusCode,
                 $"/voice: {(int)response.StatusCode} {await response.Content.ReadAsStringAsync()}");
             var pending = (await response.Content.ReadFromJsonAsync<JsonNode>())!;
+            if ((bool?)pending["voiceAttempt"]?["pending"] != true)
+                return await Get();
             var attemptId = (string)pending["voiceAttempt"]!["attemptId"]!;
             var stream = await StreamReply(attemptId);
             Assert.Equal(HttpStatusCode.OK, stream.StatusCode);
@@ -358,15 +412,15 @@ public class TripContentPinningTests(TripApiFactory factory) : IClassFixture<Tri
         var trip = await TripApiTests.TripClient.Start(factory, "business");
         await trip.Choose("a", "a");
 
-        // Методист публикует №6 v2 и добавляет в пул Событие, которого в этом Рейсе нет.
-        var v2 = JsonNode.Parse(SeedContent.Events.Single(e => e.Document.Id == "sit-06").Json)!;
-        v2["version"] = 2;
-        v2["title"] = "Пассажир навеселе (v2)";
+        // Методист публикует №6 v3 и добавляет в пул Событие, которого в этом Рейсе нет.
+        var v3 = JsonNode.Parse(SeedContent.Events.Single(e => e.Document.Id == "sit-06").Json)!;
+        v3["version"] = 3;
+        v3["title"] = "Пассажир навеселе (v3)";
         var settings = JsonNode.Parse(await factory.Database(db => db.TripSettings.Select(s => s.Document).SingleAsync()))!;
         settings["proactiveChoice"]!["options"]![0]!["pool"]!.AsArray().Add("sit-99");
         await factory.Database(db =>
         {
-            db.EventDocuments.Add(new EventDocumentRecord { EventId = "sit-06", Version = 2, Document = v2.ToJsonString() });
+            db.EventDocuments.Add(new EventDocumentRecord { EventId = "sit-06", Version = 3, Document = v3.ToJsonString() });
             db.TripSettings.Single().Document = settings.ToJsonString();
             return db.SaveChangesAsync();
         });
@@ -377,6 +431,6 @@ public class TripContentPinningTests(TripApiFactory factory) : IClassFixture<Tri
 
         Assert.Equal("arrived", trip.Status);
         var sit06 = TripApiTests.DebriefEvents(await trip.Debrief()).Single(e => (string)e["eventId"]! == "sit-06");
-        Assert.Equal(("Пассажир с признаками алкогольного опьянения", 1), ((string)sit06["title"]!, (int)sit06["version"]!));
+        Assert.Equal(("Пассажир с признаками алкогольного опьянения", 2), ((string)sit06["title"]!, (int)sit06["version"]!));
     }
 }

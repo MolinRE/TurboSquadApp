@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using TurboSquadApp.Voice;
 
 namespace TurboSquadApp.Trips;
 
@@ -44,7 +45,11 @@ public sealed record Debrief(
             .Select(attempt => new DebriefVoiceAttempt(
                 attempt.EventId, attempt.EventVersion, attempt.StepId, attempt.Transcript, attempt.Choice,
                 attempt.Confidence, attempt.LatencyMs, attempt.Applied, attempt.ErrorCode,
-                attempt.ProviderRequestId, attempt.AttemptId, attempt.PassengerReply, attempt.ReplyError))
+                attempt.ProviderRequestId, attempt.AttemptId, attempt.PassengerReply, attempt.ReplyError,
+                attempt.Assessment?.Score, attempt.Assessment?.ScoreConfidence,
+                attempt.Assessment?.RoleStages ?? new Dictionary<string, double>(),
+                attempt.Assessment?.SafetyViolation, attempt.Assessment?.SafetyConfidence,
+                attempt.SttLatencyMs, attempt.LayaLatencyMs, attempt.LlmLatencyMs))
             .ToList();
         return new Debrief(state.Status, SummaryOf(state), items, voiceAttempts);
     }
@@ -102,4 +107,7 @@ public sealed record DebriefScaleChange(string Scale, string Name, int Nominal, 
 public sealed record DebriefVoiceAttempt(
     string EventId, int EventVersion, string StepId, string? Transcript, string? Choice,
     double? Confidence, int LatencyMs, bool Applied, string? ErrorCode, string? ProviderRequestId,
-    string AttemptId, string? PassengerReply, string? ReplyError);
+    string AttemptId, string? PassengerReply, string? ReplyError,
+    double? Score, double? ScoreConfidence, IReadOnlyDictionary<string, double> RoleStages,
+    double? SafetyViolation, double? SafetyConfidence,
+    int? SttLatencyMs, int? LayaLatencyMs, int? LlmLatencyMs);
