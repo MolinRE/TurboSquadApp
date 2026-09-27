@@ -4,6 +4,7 @@ using TurboSquadApp.Data;
 using TurboSquadApp.Events;
 using TurboSquadApp.Questions;
 using TurboSquadApp.Scoring;
+using TurboSquadApp.Achievements;
 
 namespace TurboSquadApp.Swipes;
 
@@ -13,7 +14,7 @@ namespace TurboSquadApp.Swipes;
 /// правила заново проигрывают записанные ответы на колоде и снимке Шкал со старта.
 /// </summary>
 public sealed class SwipeShiftService(AppDbContext dbContext, TimeProvider clock, Random random,
-    KnowledgeScoringService scoring)
+    KnowledgeScoringService scoring, AchievementService achievements)
 {
     /// <summary>JSON колонок jsonb Смены и ответов: колода, снимок Шкал, изменения Шкал.</summary>
     private static readonly JsonSerializerOptions ColumnJson = JsonSerializerOptions.Web;
@@ -186,6 +187,7 @@ public sealed class SwipeShiftService(AppDbContext dbContext, TimeProvider clock
         record.FailureScale = play.FailedScale;
         if (play.Status != ShiftStatus.Running) record.FinishedAt = now;
         await dbContext.SaveChangesAsync(cancellationToken);
+        await achievements.EvaluateAsync(record.UserId, cancellationToken);
 
         return Results.Ok(new AnswerOutcomeView(
             settled.Verdict, settled.Question.Options.Correct, settled.Question.Explanation, settled.ScaleChanges,
