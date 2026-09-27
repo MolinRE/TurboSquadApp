@@ -26,7 +26,7 @@ public sealed class VoiceOptions
     public string LlmReasoningEffort { get; init; } = "low";
     public int LlmMaxTokens { get; init; } = 256;
     public TimeSpan LlmTimeout { get; init; } = TimeSpan.FromSeconds(15);
-    public double MinimumConfidence { get; init; } = 0.7;
+    public double MinimumConfidence { get; init; } = 0.55;
     public long MaxAudioBytes { get; init; } = 10 * 1024 * 1024;
 
     public static VoiceOptions FromConfiguration(IConfiguration configuration) => new()
@@ -47,7 +47,7 @@ public sealed class VoiceOptions
         LlmReasoningEffort = configuration["Voice:LlmReasoningEffort"] ?? "low",
         LlmMaxTokens = configuration.GetValue("Voice:LlmMaxTokens", 256),
         LlmTimeout = TimeSpan.FromSeconds(configuration.GetValue("Voice:LlmTimeoutSeconds", 15)),
-        MinimumConfidence = configuration.GetValue("Voice:MinimumConfidence", 0.7),
+        MinimumConfidence = configuration.GetValue("Voice:MinimumConfidence", 0.55),
         MaxAudioBytes = configuration.GetValue("Voice:MaxAudioBytes", 10 * 1024 * 1024L),
     };
 

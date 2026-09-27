@@ -171,6 +171,10 @@ public static class EventValidator
                 Error(atStep, "Шаг с таймером без ветки таймаута", "ADR-0001");
             if (step.TimerSec is null && step.Timeout is not null)
                 Warn(atStep, "Ветка таймаута есть, а таймера нет: она никогда не сработает", "ADR-0001");
+            if (step.AnswerType == "voice")
+                foreach (var variant in (step.Variants ?? []).Where(v => string.IsNullOrWhiteSpace(v.LayaCriterion)))
+                    Warn(IssueLocation.Of(step, variant),
+                        "Нет описания для Laya (layaCriterion): она сравнит ответ с текстом Варианта и чаще будет ошибаться", "ADR-0003");
             if (step.Variants is { Count: > 0 } && step.Variants.All(v => v.Conditions is { Count: > 0 }))
                 Warn(atStep, "У всех Вариантов есть Условия: при каком-то состоянии Рейса проводнику будет нечего выбрать", "ADR-0001");
 

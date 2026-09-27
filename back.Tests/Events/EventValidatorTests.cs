@@ -90,6 +90,16 @@ public class EventValidatorTests
     }
 
     [Fact]
+    public void Voice_step_variant_without_laya_criterion_is_a_warning()
+    {
+        var ev = ValidEvent();
+        Step(ev, "s1")["answerType"] = "voice";
+        Variant(ev, "s1", "a")["layaCriterion"] = "Проводник спокойно просит соблюдать тишину";
+
+        AssertSingleWarning(Validate(ev), "Шаг s1 → Вариант b");
+    }
+
+    [Fact]
     public void Transition_to_missing_step_is_an_error()
     {
         var ev = ValidEvent();

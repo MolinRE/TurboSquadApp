@@ -36,6 +36,25 @@ public class VoiceClientTests
     }
 
     [Fact]
+    public void Default_laya_confidence_threshold_is_0_55()
+    {
+        Assert.Equal(0.55, new VoiceOptions().MinimumConfidence);
+        Assert.Equal(0.55, VoiceOptions.FromConfiguration(new ConfigurationBuilder().Build()).MinimumConfidence);
+    }
+
+    [Theory]
+    [InlineData(100, "доброжелательно")]
+    [InlineData(70, "доброжелательно")]
+    [InlineData(69, "раздражение")]
+    [InlineData(40, "раздражение")]
+    [InlineData(39, "резко")]
+    [InlineData(0, "резко")]
+    public void Passenger_tone_follows_loyalty(int loyalty, string expected)
+    {
+        Assert.Contains(expected, PassengerTone.For(loyalty));
+    }
+
+    [Fact]
     public async Task Laya_client_sends_structured_state_and_reads_choice_confidence()
     {
         HttpRequestMessage? captured = null;

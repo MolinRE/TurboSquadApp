@@ -17,7 +17,7 @@ public class SeedContentTests
     public void Seeds_are_shift_start_and_two_scored_situations()
     {
         Assert.Equal(
-            [("zastup", 1), ("sit-06", 3), ("sit-33", 3)],
+            [("zastup", 1), ("sit-06", 4), ("sit-33", 4)],
             SeedContent.Events.Select(e => (e.Document.Id, e.Document.Version)));
     }
 
