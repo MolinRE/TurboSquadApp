@@ -29,8 +29,15 @@ const CYCLES = [
 ];
 /** Допуск на сеть, как у таймера Рейса: ответ позже лимита больше чем на секунду — «Время вышло». */
 const TIMEOUT_TOLERANCE_MS = 1000;
+/** Повтор: Карточка с ошибкой или «Не знаю» возвращается через столько Карточек… */
+const REPEAT_AFTER_CARDS = 3;
+/** …и не больше стольких раз, потом Вопрос остаётся только в «Что повторить». */
+const MAX_REPEATS = 2;
 
-type AnswerRecord = { questionId: string; verdict: Verdict; elapsedMs: number };
+type AnswerRecord = { questionId: string; verdict: Verdict; elapsedMs: number; isRepeat: boolean };
+
+/** Показ Вопроса карточкой; repeat — номер Повтора, 0 — первый показ. */
+type Show = { question: SwipeQuestion; repeat: number };
 
 type FakeShift = {
   id: string;
@@ -39,7 +46,8 @@ type FakeShift = {
   cycle: number | null;
   previousCycles: CycleResult[];
   deck: SwipeQuestion[];
-  position: number;
+  /** Показы впереди, первый — текущая карточка. Незаконченный Вопрос стоит в очереди ровно раз. */
+  queue: Show[];
   scales: Record<string, number>;
   status: ShiftStatus;
   failedScale: string | null;
@@ -75,7 +83,7 @@ function createShift(
     cycle,
     previousCycles,
     deck,
-    position: 0,
+    queue: deck.map((question) => ({ question, repeat: 0 })),
     scales: Object.fromEntries(localScales.map((scale) => [scale.code, scale.start])),
     status: "running",
     failedScale: null,
@@ -96,12 +104,20 @@ function cycleOf(shift: FakeShift) {
   return shift.cycle === null ? null : CYCLES[shift.cycle - 1];
 }
 
+/**
+ * Повтор только «В своём темпе»: возвращать ли ошибку в тот же Цикл или оставить её
+ * следующему Циклу — открытый вопрос (open-questions §4).
+ */
+function repeatsMistakes(shift: FakeShift) {
+  return shift.mode === "calm";
+}
+
 function readingMsOf(shift: FakeShift, question: SwipeQuestion) {
   const msPerChar = cycleOf(shift)?.typingMsPerChar ?? CALM_TYPING_MS_PER_CHAR;
   return question.statement.length * msPerChar;
 }
 
-function toCard(shift: FakeShift, question: SwipeQuestion): ShiftCard {
+function toCard(shift: FakeShift, { question, repeat }: Show): ShiftCard {
   return {
     questionId: question.id,
     statement: question.statement,
@@ -109,14 +125,19 @@ function toCard(shift: FakeShift, question: SwipeQuestion): ShiftCard {
     leftLabel: question.left.label,
     topic: question.topic,
     serviceClasses: question.serviceClasses,
-    isRepeat: false,
+    isRepeat: repeat > 0,
     readingMs: readingMsOf(shift, question),
     timeLimitMs: cycleOf(shift)?.timeLimitMs ?? null,
   };
 }
 
+/** Первый ответ на каждый Вопрос: по нему прогресс, «верно с первого раза» и «Что повторить». */
+function firstAnswersOf(shift: FakeShift) {
+  return shift.answers.filter((answer) => !answer.isRepeat);
+}
+
 function mistakesOf(shift: FakeShift): SwipeQuestion[] {
-  return shift.answers
+  return firstAnswersOf(shift)
     .filter((answer) => answer.verdict !== "correct")
     .map((answer) => shift.deck.find((question) => question.id === answer.questionId)!);
 }
@@ -128,7 +149,7 @@ function averageOf(values: number[]) {
 function resultOf(shift: FakeShift): ShiftResult {
   return {
     failedScale: shift.failedScale,
-    firstTryCorrect: shift.answers.filter((answer) => answer.verdict === "correct").length,
+    firstTryCorrect: firstAnswersOf(shift).filter((answer) => answer.verdict === "correct").length,
     total: shift.deck.length,
     averageAnswerMs: averageOf(shift.answers.map((answer) => answer.elapsedMs)),
     mistakes: mistakesOf(shift).map((question) => ({
@@ -167,11 +188,11 @@ function toState(shift: FakeShift): ShiftState {
     status: shift.status,
     scales: localScales.map((scale) => ({ ...scale, value: shift.scales[scale.code] })),
     progress: {
-      done: shift.answers.length,
+      done: shift.deck.length - shift.queue.length,
       total: shift.deck.length,
-      verdicts: shift.answers.map((answer) => answer.verdict),
+      verdicts: firstAnswersOf(shift).map((answer) => answer.verdict),
     },
-    card: running && shift.shownAt !== null ? toCard(shift, shift.deck[shift.position]) : null,
+    card: running && shift.shownAt !== null ? toCard(shift, shift.queue[0]) : null,
     result: running ? null : resultOf(shift),
   });
 }
@@ -211,32 +232,38 @@ function applyDeltas(shift: FakeShift, deltas: Record<string, number>): Record<s
 
 /** Текущая карточка, на которую можно ответить, и время ответа от конца её печати. */
 function currentCard(shift: FakeShift, questionId: string, answeredAt: number) {
-  const question = shift.deck[shift.position];
-  if (shift.status !== "running" || shift.shownAt === null || question.id !== questionId) {
+  const show = shift.queue[0];
+  if (shift.status !== "running" || shift.shownAt === null || show.question.id !== questionId) {
     throw new Error("На эту карточку уже ответили");
   }
-  const elapsedMs = Math.max(0, answeredAt - shift.shownAt - readingMsOf(shift, question));
-  return { question, elapsedMs };
+  const elapsedMs = Math.max(0, answeredAt - shift.shownAt - readingMsOf(shift, show.question));
+  return { show, elapsedMs };
 }
 
 function settle(
   shift: FakeShift,
-  question: SwipeQuestion,
+  show: Show,
   answer: SwipeAnswer,
   elapsedMs: number,
   timedOut: boolean,
 ): AnswerOutcome {
+  const { question } = show;
   const verdict = verdictOf(question, answer);
   const scaleChanges = applyDeltas(shift, deltasOf(question, answer));
-  shift.answers.push({ questionId: question.id, verdict, elapsedMs });
-  shift.position += 1;
+  shift.answers.push({ questionId: question.id, verdict, elapsedMs, isRepeat: show.repeat > 0 });
+  shift.queue.shift();
   shift.shownAt = null;
+  if (verdict !== "correct" && repeatsMistakes(shift) && show.repeat < MAX_REPEATS) {
+    // Через REPEAT_AFTER_CARDS Карточек, а если столько не осталось — в конец.
+    const at = Math.min(REPEAT_AFTER_CARDS, shift.queue.length);
+    shift.queue.splice(at, 0, { question, repeat: show.repeat + 1 });
+  }
 
   const broken = localScales.find((scale) => shift.scales[scale.code] <= scale.failureThreshold);
   if (broken) {
     shift.status = "failed";
     shift.failedScale = broken.code;
-  } else if (shift.position >= shift.deck.length) {
+  } else if (shift.queue.length === 0) {
     shift.status = "passed";
   }
 
@@ -274,24 +301,24 @@ export const fakeSwipesApi: SwipesApi = {
     const answeredAt = Date.now();
     await delay();
     const shift = findShift(shiftId);
-    const { question, elapsedMs } = currentCard(shift, questionId, answeredAt);
+    const { show, elapsedMs } = currentCard(shift, questionId, answeredAt);
     const limit = cycleOf(shift)?.timeLimitMs;
     if (limit !== undefined && elapsedMs > limit + TIMEOUT_TOLERANCE_MS) {
-      return settle(shift, question, "unknown", limit, true);
+      return settle(shift, show, "unknown", limit, true);
     }
-    return settle(shift, question, answer, elapsedMs, false);
+    return settle(shift, show, answer, elapsedMs, false);
   },
 
   async timeOut(shiftId, questionId) {
     const answeredAt = Date.now();
     await delay();
     const shift = findShift(shiftId);
-    const { question, elapsedMs } = currentCard(shift, questionId, answeredAt);
+    const { show, elapsedMs } = currentCard(shift, questionId, answeredAt);
     const limit = cycleOf(shift)?.timeLimitMs;
     if (limit === undefined || elapsedMs < limit - TIMEOUT_TOLERANCE_MS) {
       throw new Error("Время ещё не вышло");
     }
-    return settle(shift, question, "unknown", limit, true);
+    return settle(shift, show, "unknown", limit, true);
   },
 
   async startNextCycle(shiftId) {
