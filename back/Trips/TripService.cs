@@ -22,6 +22,13 @@ public sealed class TripService(
     /// <summary>Допуск на задержку сети: ответ позже таймера больше чем на него засчитывается как таймаут.</summary>
     public static readonly TimeSpan TimerTolerance = TimeSpan.FromSeconds(1);
 
+    /// <summary>
+    /// Таймер голосового Шага — время на то, чтобы начать отвечать (PRD §6). Начало ответа —
+    /// момент прихода аудио минус длительность записи, которую сообщает клиент; допуск покрывает загрузку.
+    /// </summary>
+    public static readonly TimeSpan VoiceStartTolerance = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan MaxRecording = TimeSpan.FromSeconds(60);
+
     private static readonly JsonSerializerOptions SnapshotJson = JsonSerializerOptions.Web;
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> InMemoryReplyClaims = new();
 
@@ -87,9 +94,11 @@ public sealed class TripService(
     }
 
     public async Task<IResult> VoiceAsync(
-        Guid userId, Guid tripId, string eventId, string stepId, string attemptId, IFormFile audio,
+        Guid userId, Guid tripId, string eventId, string stepId, string attemptId, IFormFile audio, int? recordingMs,
         CancellationToken cancellationToken)
     {
+        var answerStartedAt = clock.GetUtcNow()
+            - TimeSpan.FromMilliseconds(Math.Clamp(recordingMs ?? 0, 0, (int)MaxRecording.TotalMilliseconds));
         if (await LoadAsync(userId, tripId, cancellationToken) is not { } trip) return Results.NotFound();
         var (record, state) = trip;
         if (string.IsNullOrWhiteSpace(attemptId))
@@ -143,7 +152,7 @@ public sealed class TripService(
         var afterAttempt = attemptResult.State;
         var now = clock.GetUtcNow();
         var expiresAt = ExpiresAt(record, state);
-        if (expiresAt is { } expires && now > expires + TimerTolerance)
+        if (expiresAt is { } expires && answerStartedAt > expires + VoiceStartTolerance)
         {
             var timedOutAttempt = attempt with { ErrorCode = "VoiceDeadlineExceeded" };
             var timedOutState = TripEngine.Reduce(state, new RecordVoiceAttempt(timedOutAttempt)).State;
@@ -246,15 +255,8 @@ public sealed class TripService(
         var llmTimer = Stopwatch.StartNew();
         try
         {
+            // Ответ уже принят вовремя: медленная генерация реплики его не отменяет.
             var (reply, requestId) = await StreamTokensAsync(response, attemptId, context.ToLlmRequest(), cancellationToken);
-
-            var deadline = ExpiresAt(record, state);
-            if (deadline is { } expires && clock.GetUtcNow() > expires + TimerTolerance)
-            {
-                await SaveReplyAsync(record.Id, attemptId, null, "VoiceDeadlineExceeded", (int)llmTimer.ElapsedMilliseconds);
-                await WriteSseAsync(response, "error", new { reason = "VoiceDeadlineExceeded", message = "Время голосового Шага истекло до завершения реплики" }, CancellationToken.None);
-                return;
-            }
 
             var row = await dbContext.TripJournal.SingleAsync(
                 item => item.TripId == record.Id && item.Kind == TripJournalKinds.VoiceAttempt && item.VoiceAttemptId == attemptId,
@@ -303,6 +305,7 @@ public sealed class TripService(
             var request = PassengerReplyContext.From(state, attempt).ToClarificationRequest();
             var (reply, requestId) = await StreamTokensAsync(response, attempt.AttemptId, request, cancellationToken);
             var latency = (int)llmTimer.ElapsedMilliseconds;
+            record.StepStartedAt = clock.GetUtcNow();   // пассажир задал новый вопрос: время на ответ заново
             await SaveReplyAsync(record.Id, attempt.AttemptId, reply, null, latency);
             committed = true;
             var answered = attempt with { PassengerReply = reply, LlmLatencyMs = latency };

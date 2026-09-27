@@ -114,8 +114,11 @@ public sealed class FakeEventGenerationClient : IEventGenerationClient
     }
 }
 
-/// <summary>Детерминированный провайдер для API-тестов: первый байт аудио задаёт choice.</summary>
-public sealed class FakeVoicePipeline : IVoicePipeline
+/// <summary>
+/// Детерминированный провайдер для API-тестов: первый байт аудио задаёт choice,
+/// «s» — тот же ответ «a», но обработка занимает 5 с по часам теста.
+/// </summary>
+public sealed class FakeVoicePipeline(TimeProvider clock) : IVoicePipeline
 {
     public ConcurrentQueue<VoicePipelineRequest> Requests { get; } = new();
 
@@ -126,6 +129,11 @@ public sealed class FakeVoicePipeline : IVoicePipeline
         Requests.Enqueue(request);
         var buffer = new byte[1];
         var marker = await audio.ReadAsync(buffer, cancellationToken) == 0 ? -1 : buffer[0];
+        if (marker == 's')
+        {
+            ((TestClock)clock).Advance(TimeSpan.FromSeconds(5));
+            marker = 'a';
+        }
         return marker switch
         {
             (int)'x' => new VoicePipelineResult("Невнятный ответ", "a", 0.2, 8, false, "LowConfidence", "Низкая уверенность", "fake-laya"),
