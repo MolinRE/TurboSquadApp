@@ -23,6 +23,7 @@ export type QuestionInput = {
   serviceClasses: string[];
   baseFrequency: number;
   timeLimitSec: number | null;
+  knowledgeCost: number;
 };
 
 export type Question = QuestionInput & { id: string; status: QuestionStatus };

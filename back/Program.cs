@@ -21,6 +21,7 @@ using TurboSquadApp.Voice;
 using TurboSquadApp.Analytics;
 using TurboSquadApp.Questions;
 using TurboSquadApp.Sources;
+using TurboSquadApp.Scoring;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -66,6 +67,7 @@ builder.Services.AddScoped<ContentSeeder>();
 builder.Services.AddScoped<TripService>();
 builder.Services.AddScoped<VoiceAnalyticsService>();
 builder.Services.AddScoped<SwipeShiftService>();
+builder.Services.AddScoped<KnowledgeScoringService>();
 builder.Services.AddScoped<QuestionBankService>();
 builder.Services.AddScoped<EventCmsService>();
 builder.Services.AddScoped<SourceService>();
@@ -250,6 +252,7 @@ app.MapEventEndpoints();
 app.MapTripEndpoints();
 app.MapAnalyticsEndpoints();
 app.MapSwipeEndpoints();
+app.MapProfileEndpoints();
 app.MapQuestionBankEndpoints();
 app.MapSourceEndpoints();
 app.MapEventCmsEndpoints();

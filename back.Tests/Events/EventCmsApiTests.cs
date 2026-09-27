@@ -53,11 +53,11 @@ public class EventCmsApiTests
 
         var events = (await methodologist.GetFromJsonAsync<JsonNode>("/api/cms/events"))!.AsArray();
         var sit33 = events.Single(item => (string)item!["id"]! == "sit-33")!;
-        Assert.Equal(2, (int)sit33["latestVersion"]!);
-        Assert.Contains(sit33["versions"]!.AsArray(), version => (int)version!["version"]! == 2);
+        Assert.Equal(3, (int)sit33["latestVersion"]!);
+        Assert.Contains(sit33["versions"]!.AsArray(), version => (int)version!["version"]! == 3);
 
-        var version2 = (await methodologist.GetFromJsonAsync<JsonNode>("/api/cms/events/sit-33/versions/2"))!;
-        Assert.Equal("sit-33", (string)JsonNode.Parse((string)version2["document"]!)!["id"]!);
+        var version3 = (await methodologist.GetFromJsonAsync<JsonNode>("/api/cms/events/sit-33/versions/3"))!;
+        Assert.Equal("sit-33", (string)JsonNode.Parse((string)version3["document"]!)!["id"]!);
 
         var response = await methodologist.PostAsJsonAsync("/api/cms/events/sit-33/validate", new { document = TestData.BrokenDraftJson() });
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -68,7 +68,7 @@ public class EventCmsApiTests
         Assert.NotEmpty(report["warnings"]!.AsArray());
         var wrongVersion = await methodologist.PostAsJsonAsync("/api/cms/events/sit-33/validate", new
         {
-            document = EditedEvent("sit-33", 4),
+            document = EditedEvent("sit-33", 5),
         });
         Assert.Equal(HttpStatusCode.OK, wrongVersion.StatusCode);
         Assert.False((bool)(await wrongVersion.Content.ReadFromJsonAsync<JsonNode>())!["isValid"]!);
@@ -81,7 +81,7 @@ public class EventCmsApiTests
         Assert.Equal(HttpStatusCode.Unauthorized, (await factory.CreateClient().GetAsync("/api/cms/events")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await conductor.GetAsync("/api/cms/events")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await manager.PostAsJsonAsync("/api/cms/events/sit-33/validate", new { document = "{}" })).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await conductor.PostAsJsonAsync("/api/cms/events/sit-33/publish", new { expectedVersion = 2, document = "{}" })).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await conductor.PostAsJsonAsync("/api/cms/events/sit-33/publish", new { expectedVersion = 3, document = "{}" })).StatusCode);
     }
 
     [Fact]
@@ -91,15 +91,15 @@ public class EventCmsApiTests
         using var methodologist = await factory.CreateUserClient(UserRoles.Methodologist);
         var broken = await methodologist.PostAsJsonAsync("/api/cms/events/sit-33/publish", new
         {
-            expectedVersion = 2, document = TestData.BrokenDraftJson(),
+            expectedVersion = 3, document = TestData.BrokenDraftJson(),
         });
         Assert.Equal(HttpStatusCode.BadRequest, broken.StatusCode);
         Assert.False((bool)(await broken.Content.ReadFromJsonAsync<JsonNode>())!["isValid"]!);
-        Assert.Equal(2, await LatestVersion(factory, "sit-33"));
+        Assert.Equal(3, await LatestVersion(factory, "sit-33"));
 
         var wrongId = await methodologist.PostAsJsonAsync("/api/cms/events/sit-33/publish", new
         {
-            expectedVersion = 2, document = EditedEvent("sit-06", 3),
+            expectedVersion = 3, document = EditedEvent("sit-06", 4),
         });
         Assert.Equal(HttpStatusCode.BadRequest, wrongId.StatusCode);
         Assert.Contains((await wrongId.Content.ReadFromJsonAsync<JsonNode>())!["errors"]!.AsArray(),
@@ -107,21 +107,21 @@ public class EventCmsApiTests
 
         var wrongVersion = await methodologist.PostAsJsonAsync("/api/cms/events/sit-33/publish", new
         {
-            expectedVersion = 2, document = EditedEvent("sit-33", 4),
+            expectedVersion = 3, document = EditedEvent("sit-33", 5),
         });
         Assert.Equal(HttpStatusCode.BadRequest, wrongVersion.StatusCode);
 
-        var edited = EditedEvent("sit-33", 3);
-        var published = await methodologist.PostAsJsonAsync("/api/cms/events/sit-33/publish", new { expectedVersion = 2, document = edited });
+        var edited = EditedEvent("sit-33", 4);
+        var published = await methodologist.PostAsJsonAsync("/api/cms/events/sit-33/publish", new { expectedVersion = 3, document = edited });
         Assert.Equal(HttpStatusCode.Created, published.StatusCode);
-        Assert.Equal(3, (int)(await published.Content.ReadFromJsonAsync<JsonNode>())!["version"]!);
-        var stale = await methodologist.PostAsJsonAsync("/api/cms/events/sit-33/publish", new { expectedVersion = 2, document = edited });
+        Assert.Equal(4, (int)(await published.Content.ReadFromJsonAsync<JsonNode>())!["version"]!);
+        var stale = await methodologist.PostAsJsonAsync("/api/cms/events/sit-33/publish", new { expectedVersion = 3, document = edited });
         Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
         Assert.Equal("VersionConflict", (string)(await stale.Content.ReadFromJsonAsync<JsonNode>())!["reason"]!);
-        Assert.Equal(3, await LatestVersion(factory, "sit-33"));
+        Assert.Equal(4, await LatestVersion(factory, "sit-33"));
         Assert.Equal(2, await factory.Database(db => db.EventDocuments.CountAsync(row => row.EventId == "sit-33")));
-        var previous = (await methodologist.GetFromJsonAsync<JsonNode>("/api/cms/events/sit-33/versions/2"))!;
-        Assert.Equal(2, (int)JsonNode.Parse((string)previous["document"]!)!["version"]!);
+        var previous = (await methodologist.GetFromJsonAsync<JsonNode>("/api/cms/events/sit-33/versions/3"))!;
+        Assert.Equal(3, (int)JsonNode.Parse((string)previous["document"]!)!["version"]!);
     }
 
     [Fact]
@@ -130,14 +130,14 @@ public class EventCmsApiTests
         await using var factory = new TripApiFactory();
         using var first = await factory.CreateUserClient(UserRoles.Methodologist);
         using var second = await factory.CreateUserClient(UserRoles.Methodologist);
-        var edited = EditedEvent("sit-33", 3);
+        var edited = EditedEvent("sit-33", 4);
 
         var results = await Task.WhenAll(
-            first.PostAsJsonAsync("/api/cms/events/sit-33/publish", new { expectedVersion = 2, document = edited }),
-            second.PostAsJsonAsync("/api/cms/events/sit-33/publish", new { expectedVersion = 2, document = edited }));
+            first.PostAsJsonAsync("/api/cms/events/sit-33/publish", new { expectedVersion = 3, document = edited }),
+            second.PostAsJsonAsync("/api/cms/events/sit-33/publish", new { expectedVersion = 3, document = edited }));
 
         Assert.Equal([HttpStatusCode.Created, HttpStatusCode.Conflict], results.Select(result => result.StatusCode).Order());
-        Assert.Equal(3, await LatestVersion(factory, "sit-33"));
+        Assert.Equal(4, await LatestVersion(factory, "sit-33"));
     }
 
     [Fact]
@@ -149,8 +149,8 @@ public class EventCmsApiTests
         await oldTrip.Choose("a", "a");
         await oldTrip.Proactive("obhod");
 
-        var edited = EditedEvent("sit-06", 3);
-        var published = await methodologist.PostAsJsonAsync("/api/cms/events/sit-06/publish", new { expectedVersion = 2, document = edited });
+        var edited = EditedEvent("sit-06", 4);
+        var published = await methodologist.PostAsJsonAsync("/api/cms/events/sit-06/publish", new { expectedVersion = 3, document = edited });
         Assert.Equal(HttpStatusCode.Created, published.StatusCode);
 
         var newTrip = await TripApiTests.TripClient.Start(factory, "business");
@@ -159,15 +159,15 @@ public class EventCmsApiTests
         await oldTrip.Choose("a");
         await newTrip.Choose("a");
         Assert.Equal(7, newTrip.Scales.Loyalty - oldTrip.Scales.Loyalty);
-        Assert.Equal(2, (int)JsonNode.Parse(await factory.Database(db => db.Trips.Where(row => row.Id == oldTrip.Id).Select(row => row.EventVersions).SingleAsync()))!["sit-06"]!);
-        Assert.Equal(3, (int)JsonNode.Parse(await factory.Database(db => db.Trips.Where(row => row.Id == newTrip.Id).Select(row => row.EventVersions).SingleAsync()))!["sit-06"]!);
+        Assert.Equal(3, (int)JsonNode.Parse(await factory.Database(db => db.Trips.Where(row => row.Id == oldTrip.Id).Select(row => row.EventVersions).SingleAsync()))!["sit-06"]!);
+        Assert.Equal(4, (int)JsonNode.Parse(await factory.Database(db => db.Trips.Where(row => row.Id == newTrip.Id).Select(row => row.EventVersions).SingleAsync()))!["sit-06"]!);
 
         await oldTrip.Choose("a");
         await oldTrip.Choose("a", "a", "b", "a");
         Assert.Equal("arrived", oldTrip.Status);
         var debrief = await oldTrip.Debrief();
         var oldEvent = TripApiTests.DebriefEvents(debrief).Single(item => (string)item["eventId"]! == "sit-06");
-        Assert.Equal(2, (int)oldEvent["version"]!);
+        Assert.Equal(3, (int)oldEvent["version"]!);
     }
 
     private static Task<int> LatestVersion(TripApiFactory factory, string eventId) =>

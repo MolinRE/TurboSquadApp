@@ -19,6 +19,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<SourceRecord> Sources => Set<SourceRecord>();
     public DbSet<SwipeShiftRecord> SwipeShifts => Set<SwipeShiftRecord>();
     public DbSet<SwipeAnswerRecord> SwipeAnswers => Set<SwipeAnswerRecord>();
+    public DbSet<KnowledgeMasteryRecord> KnowledgeMasteries => Set<KnowledgeMasteryRecord>();
+    public DbSet<ConductorProfileRecord> ConductorProfiles => Set<ConductorProfileRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -71,6 +73,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         QuestionModel.Configure(modelBuilder);
         SourceModel.Configure(modelBuilder);
         SwipeShiftModel.Configure(modelBuilder);
+        KnowledgeModel.Configure(modelBuilder);
         SeedOrganization(modelBuilder);
     }
 
