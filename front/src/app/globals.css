@@ -142,6 +142,27 @@
   --sidebar-ring: #54aea4;
 }
 
+/* Полоска паузы после верного ответа в Смене на свайпах: длительность задаёт компонент. */
+@keyframes pause-bar {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+/* Рука на фоне пустой зоны Смены на свайпах покачивается: свайп работает и здесь. */
+@keyframes swipe-sway {
+  0%,
+  100% {
+    transform: translateX(-10px) rotate(-10deg);
+  }
+  50% {
+    transform: translateX(10px) rotate(10deg);
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
