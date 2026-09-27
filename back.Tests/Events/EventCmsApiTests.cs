@@ -31,6 +31,12 @@ public class EventCmsApiTests
         Assert.Contains(report["errors"]!.AsArray(), issue =>
             (string?)issue!["location"]?["stepId"] is not null && (string?)issue["rule"] is not null);
         Assert.NotEmpty(report["warnings"]!.AsArray());
+        var wrongVersion = await methodologist.PostAsJsonAsync("/api/cms/events/sit-33/validate", new
+        {
+            document = EditedEvent("sit-33", 4),
+        });
+        Assert.Equal(HttpStatusCode.OK, wrongVersion.StatusCode);
+        Assert.False((bool)(await wrongVersion.Content.ReadFromJsonAsync<JsonNode>())!["isValid"]!);
         var malformed = await methodologist.PostAsJsonAsync("/api/cms/events/sit-33/validate", new { document = "{" });
         Assert.Equal(HttpStatusCode.OK, malformed.StatusCode);
         Assert.False((bool)(await malformed.Content.ReadFromJsonAsync<JsonNode>())!["isValid"]!);

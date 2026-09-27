@@ -64,13 +64,6 @@ public sealed class EventCmsService(AppDbContext db, TimeProvider clock)
             if (!report.IsValid) return Results.BadRequest(report);
 
             var document = JsonSerializer.Deserialize<EventDocument>(request.Document, EventJson.Options)!;
-            if (document.Version != current.Version + 1)
-            {
-                var issue = new ValidationIssue(Severity.Error, IssueLocation.Event,
-                    $"Новая версия должна быть {current.Version + 1}", "ADR-0001");
-                return Results.BadRequest(report with { Errors = [.. report.Errors, issue] });
-            }
-
             var record = new EventDocumentRecord
             {
                 EventId = id, Version = document.Version, Document = request.Document,
@@ -116,10 +109,20 @@ public sealed class EventCmsService(AppDbContext db, TimeProvider clock)
         if (!report.IsValid) return report;
 
         var parsed = JsonSerializer.Deserialize<EventDocument>(document, EventJson.Options)!;
-        if (parsed.Id == id) return report;
-        var issue = new ValidationIssue(Severity.Error, IssueLocation.Event,
-            $"ID документа «{parsed.Id}» не совпадает с ID События «{id}»", "ADR-0001");
-        return report with { Errors = [.. report.Errors, issue] };
+        var issues = new List<ValidationIssue>();
+        if (parsed.Id != id)
+            issues.Add(new ValidationIssue(Severity.Error, IssueLocation.Event,
+                $"ID документа «{parsed.Id}» не совпадает с ID События «{id}»", "ADR-0001"));
+        var latestVersion = await db.EventDocuments.AsNoTracking()
+            .Where(row => row.EventId == id).Select(row => (int?)row.Version)
+            .MaxAsync(cancellationToken);
+        if (latestVersion is null)
+            issues.Add(new ValidationIssue(Severity.Error, IssueLocation.Event,
+                $"Событие «{id}» не найдено", "ADR-0001"));
+        else if (parsed.Version != latestVersion + 1)
+            issues.Add(new ValidationIssue(Severity.Error, IssueLocation.Event,
+                $"Новая версия должна быть {latestVersion + 1}", "ADR-0001"));
+        return issues.Count == 0 ? report : report with { Errors = [.. report.Errors, .. issues] };
     }
 
     private static EventVersionView View(EventDocumentRecord record) =>
