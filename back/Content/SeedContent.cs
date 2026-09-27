@@ -44,7 +44,8 @@ public sealed record SeedExplanation(string Text, string KeyFact, string Source,
 /// <summary>
 /// Стартовый контент этапа 1: справочники, Заступ на смену, №6 и №33 из «Ситуаций на борту», настройка Рейса —
 /// перенесены из прототипа движка (ветка prototype/trip-engine) в формат PRD v7 §5.2; Вопросы-свайпы — из
-/// локальных данных экрана Смены на свайпах (#24). Файлы — ресурсы сборки, Content/Seeds.
+/// локальных данных экрана Смены на свайпах (#24), Вопросы Блица (single/multiple/sequence) — по «Ситуациям на борту» (#40).
+/// Файлы — ресурсы сборки, Content/Seeds.
 /// </summary>
 public static class SeedContent
 {

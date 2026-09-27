@@ -9,8 +9,9 @@ namespace TurboSquadApp.Content;
 /// <summary>
 /// Засев стартового контента при запуске: добавляет только то, чего в базе ещё нет,
 /// поэтому повторный запуск дублей не создаёт, а правки Методиста не перезаписывает.
+/// Вопросы по умолчанию — из SeedContent; свой список нужен тестам битого сида.
 /// </summary>
-public sealed class ContentSeeder(AppDbContext dbContext)
+public sealed class ContentSeeder(AppDbContext dbContext, IReadOnlyList<SeedQuestion>? seedQuestions = null)
 {
     public const string DefaultTripSettingsId = "default";
 
@@ -30,7 +31,7 @@ public sealed class ContentSeeder(AppDbContext dbContext)
             }
         }
 
-        var questions = SeedContent.Questions.Select(seed => QuestionRecordOf(seed, directory)).ToList();
+        var questions = (seedQuestions ?? SeedContent.Questions).Select(seed => QuestionRecordOf(seed, directory)).ToList();
 
         var existingScales = await dbContext.Scales.Select(scale => scale.Code).ToListAsync(cancellationToken);
         dbContext.Scales.AddRange(directory.Scales
