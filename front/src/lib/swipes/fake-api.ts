@@ -4,9 +4,12 @@
 
 import type {
   AnswerOutcome,
+  CycleResult,
+  ShiftCard,
+  ShiftMode,
+  ShiftResult,
   ShiftState,
   ShiftStatus,
-  ShiftCard,
   SwipeAnswer,
   SwipesApi,
   Verdict,
@@ -16,13 +19,25 @@ import { localQuestions, localScales, type SwipeQuestion } from "./local-data";
 const DECK_SIZE = 10;
 /** Задержка «сети», чтобы экран с первого дня жил с асинхронными ответами. */
 const LATENCY_MS = 150;
-/** Темп печати формулировки — калибруется (open-questions §2). */
-const TYPING_MS_PER_CHAR = 35;
+/** Темп печати в режиме «В своём темпе» — калибруется (open-questions §2). */
+const CALM_TYPING_MS_PER_CHAR = 35;
+/** Циклы метода Woodpecker: лимит на Карточку короче, печать быстрее (open-questions §2). */
+const CYCLES = [
+  { timeLimitMs: 10_000, typingMsPerChar: 35 },
+  { timeLimitMs: 7_000, typingMsPerChar: 21 },
+  { timeLimitMs: 5_000, typingMsPerChar: 12 },
+];
+/** Допуск на сеть, как у таймера Рейса: ответ позже лимита больше чем на секунду — «Время вышло». */
+const TIMEOUT_TOLERANCE_MS = 1000;
 
 type AnswerRecord = { questionId: string; verdict: Verdict; elapsedMs: number };
 
 type FakeShift = {
   id: string;
+  mode: ShiftMode;
+  /** Номер Цикла в режиме «На скорость»; null — «В своём темпе». */
+  cycle: number | null;
+  previousCycles: CycleResult[];
   deck: SwipeQuestion[];
   position: number;
   scales: Record<string, number>;
@@ -48,9 +63,17 @@ function shuffled<T>(items: readonly T[]): T[] {
   return result;
 }
 
-function createShift(deck: SwipeQuestion[]): FakeShift {
+function createShift(
+  deck: SwipeQuestion[],
+  mode: ShiftMode,
+  cycle: number | null,
+  previousCycles: CycleResult[],
+): FakeShift {
   const shift: FakeShift = {
     id: crypto.randomUUID(),
+    mode,
+    cycle,
+    previousCycles,
     deck,
     position: 0,
     scales: Object.fromEntries(localScales.map((scale) => [scale.code, scale.start])),
@@ -69,11 +92,16 @@ function findShift(shiftId: string): FakeShift {
   return shift;
 }
 
-function readingMsOf(question: SwipeQuestion) {
-  return question.statement.length * TYPING_MS_PER_CHAR;
+function cycleOf(shift: FakeShift) {
+  return shift.cycle === null ? null : CYCLES[shift.cycle - 1];
 }
 
-function toCard(question: SwipeQuestion): ShiftCard {
+function readingMsOf(shift: FakeShift, question: SwipeQuestion) {
+  const msPerChar = cycleOf(shift)?.typingMsPerChar ?? CALM_TYPING_MS_PER_CHAR;
+  return question.statement.length * msPerChar;
+}
+
+function toCard(shift: FakeShift, question: SwipeQuestion): ShiftCard {
   return {
     questionId: question.id,
     statement: question.statement,
@@ -82,7 +110,8 @@ function toCard(question: SwipeQuestion): ShiftCard {
     topic: question.topic,
     serviceClasses: question.serviceClasses,
     isRepeat: false,
-    readingMs: readingMsOf(question),
+    readingMs: readingMsOf(shift, question),
+    timeLimitMs: cycleOf(shift)?.timeLimitMs ?? null,
   };
 }
 
@@ -96,27 +125,54 @@ function averageOf(values: number[]) {
   return values.length ? Math.round(values.reduce((sum, value) => sum + value, 0) / values.length) : null;
 }
 
+function resultOf(shift: FakeShift): ShiftResult {
+  return {
+    failedScale: shift.failedScale,
+    firstTryCorrect: shift.answers.filter((answer) => answer.verdict === "correct").length,
+    total: shift.deck.length,
+    averageAnswerMs: averageOf(shift.answers.map((answer) => answer.elapsedMs)),
+    mistakes: mistakesOf(shift).map((question) => ({
+      questionId: question.id,
+      statement: question.statement,
+      explanation: question.explanation,
+    })),
+  };
+}
+
+function cycleResultOf(shift: FakeShift, number: number): CycleResult {
+  const { failedScale, firstTryCorrect, total, averageAnswerMs } = resultOf(shift);
+  return {
+    number,
+    timeLimitMs: CYCLES[number - 1].timeLimitMs,
+    failedScale,
+    firstTryCorrect,
+    total,
+    averageAnswerMs,
+  };
+}
+
 function toState(shift: FakeShift): ShiftState {
   const running = shift.status === "running";
   return structuredClone({
     shiftId: shift.id,
+    mode: shift.mode,
+    cycle:
+      shift.cycle === null
+        ? null
+        : {
+            number: shift.cycle,
+            timeLimitsMs: CYCLES.map((cycle) => cycle.timeLimitMs),
+            previous: shift.previousCycles,
+          },
     status: shift.status,
     scales: localScales.map((scale) => ({ ...scale, value: shift.scales[scale.code] })),
-    progress: { done: shift.answers.length, total: shift.deck.length },
-    card: running && shift.shownAt !== null ? toCard(shift.deck[shift.position]) : null,
-    result: running
-      ? null
-      : {
-          failedScale: shift.failedScale,
-          firstTryCorrect: shift.answers.filter((answer) => answer.verdict === "correct").length,
-          total: shift.deck.length,
-          averageAnswerMs: averageOf(shift.answers.map((answer) => answer.elapsedMs)),
-          mistakes: mistakesOf(shift).map((question) => ({
-            questionId: question.id,
-            statement: question.statement,
-            explanation: question.explanation,
-          })),
-        },
+    progress: {
+      done: shift.answers.length,
+      total: shift.deck.length,
+      verdicts: shift.answers.map((answer) => answer.verdict),
+    },
+    card: running && shift.shownAt !== null ? toCard(shift, shift.deck[shift.position]) : null,
+    result: running ? null : resultOf(shift),
   });
 }
 
@@ -153,10 +209,53 @@ function applyDeltas(shift: FakeShift, deltas: Record<string, number>): Record<s
   return applied;
 }
 
+/** Текущая карточка, на которую можно ответить, и время ответа от конца её печати. */
+function currentCard(shift: FakeShift, questionId: string, answeredAt: number) {
+  const question = shift.deck[shift.position];
+  if (shift.status !== "running" || shift.shownAt === null || question.id !== questionId) {
+    throw new Error("На эту карточку уже ответили");
+  }
+  const elapsedMs = Math.max(0, answeredAt - shift.shownAt - readingMsOf(shift, question));
+  return { question, elapsedMs };
+}
+
+function settle(
+  shift: FakeShift,
+  question: SwipeQuestion,
+  answer: SwipeAnswer,
+  elapsedMs: number,
+  timedOut: boolean,
+): AnswerOutcome {
+  const verdict = verdictOf(question, answer);
+  const scaleChanges = applyDeltas(shift, deltasOf(question, answer));
+  shift.answers.push({ questionId: question.id, verdict, elapsedMs });
+  shift.position += 1;
+  shift.shownAt = null;
+
+  const broken = localScales.find((scale) => shift.scales[scale.code] <= scale.failureThreshold);
+  if (broken) {
+    shift.status = "failed";
+    shift.failedScale = broken.code;
+  } else if (shift.position >= shift.deck.length) {
+    shift.status = "passed";
+  }
+
+  return {
+    verdict,
+    correctSide: question.correct,
+    explanation: structuredClone(question.explanation),
+    scaleChanges,
+    elapsedMs,
+    timedOut,
+    shift: toState(shift),
+  };
+}
+
 export const fakeSwipesApi: SwipesApi = {
-  async startShift() {
+  async startShift(mode) {
     await delay();
-    return toState(createShift(shuffled(localQuestions).slice(0, DECK_SIZE)));
+    const deck = shuffled(localQuestions).slice(0, DECK_SIZE);
+    return toState(createShift(deck, mode, mode === "woodpecker" ? 1 : null, []));
   },
 
   async getShift(shiftId) {
@@ -171,38 +270,38 @@ export const fakeSwipesApi: SwipesApi = {
     return toState(shift);
   },
 
-  async answer(shiftId, questionId, answer): Promise<AnswerOutcome> {
+  async answer(shiftId, questionId, answer) {
     const answeredAt = Date.now();
     await delay();
     const shift = findShift(shiftId);
-    const question = shift.deck[shift.position];
-    if (shift.status !== "running" || shift.shownAt === null || question.id !== questionId) {
-      throw new Error("На эту карточку уже ответили");
+    const { question, elapsedMs } = currentCard(shift, questionId, answeredAt);
+    const limit = cycleOf(shift)?.timeLimitMs;
+    if (limit !== undefined && elapsedMs > limit + TIMEOUT_TOLERANCE_MS) {
+      return settle(shift, question, "unknown", limit, true);
     }
+    return settle(shift, question, answer, elapsedMs, false);
+  },
 
-    const elapsedMs = Math.max(0, answeredAt - shift.shownAt - readingMsOf(question));
-    const verdict = verdictOf(question, answer);
-    const scaleChanges = applyDeltas(shift, deltasOf(question, answer));
-    shift.answers.push({ questionId, verdict, elapsedMs });
-    shift.position += 1;
-    shift.shownAt = null;
-
-    const broken = localScales.find((scale) => shift.scales[scale.code] <= scale.failureThreshold);
-    if (broken) {
-      shift.status = "failed";
-      shift.failedScale = broken.code;
-    } else if (shift.position >= shift.deck.length) {
-      shift.status = "passed";
+  async timeOut(shiftId, questionId) {
+    const answeredAt = Date.now();
+    await delay();
+    const shift = findShift(shiftId);
+    const { question, elapsedMs } = currentCard(shift, questionId, answeredAt);
+    const limit = cycleOf(shift)?.timeLimitMs;
+    if (limit === undefined || elapsedMs < limit - TIMEOUT_TOLERANCE_MS) {
+      throw new Error("Время ещё не вышло");
     }
+    return settle(shift, question, "unknown", limit, true);
+  },
 
-    return {
-      verdict,
-      correctSide: question.correct,
-      explanation: structuredClone(question.explanation),
-      scaleChanges,
-      elapsedMs,
-      shift: toState(shift),
-    };
+  async startNextCycle(shiftId) {
+    await delay();
+    const shift = findShift(shiftId);
+    if (shift.cycle === null || shift.status === "running" || shift.cycle >= CYCLES.length) {
+      throw new Error("Следующего Цикла нет");
+    }
+    const previous = [...shift.previousCycles, cycleResultOf(shift, shift.cycle)];
+    return toState(createShift(shuffled(shift.deck), "woodpecker", shift.cycle + 1, previous));
   },
 
   async startWorkOnMistakes(shiftId) {
@@ -212,6 +311,6 @@ export const fakeSwipesApi: SwipesApi = {
     if (shift.status === "running" || mistakes.length === 0) {
       throw new Error("Работа над ошибками доступна после Смены с ошибками");
     }
-    return toState(createShift(mistakes));
+    return toState(createShift(mistakes, "calm", null, []));
   },
 };
