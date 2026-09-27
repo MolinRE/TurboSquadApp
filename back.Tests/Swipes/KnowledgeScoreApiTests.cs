@@ -15,7 +15,7 @@ public class KnowledgeScoreApiTests
         using var factory = new TripApiFactory();
         await factory.Database(async db =>
         {
-            var questions = await db.Questions.OrderBy(q => q.Id).ToListAsync();
+            var questions = await db.Questions.Where(q => q.Type == "swipe").OrderBy(q => q.Id).ToListAsync();
             foreach (var item in questions.Skip(4)) item.Status = "draft";
             await db.SaveChangesAsync();
             return true;

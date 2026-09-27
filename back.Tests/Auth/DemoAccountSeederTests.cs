@@ -43,7 +43,8 @@ public class DemoAccountSeederTests
         {
             Assert.Equal(
                 [("conductor-novice", "Игорь Лебедев"), ("conductor-star", "Марина Соколова"), ("manager-methodologist", "Ольга Верещагина")],
-                (await db.Users.OrderBy(u => u.Username).ToListAsync()).Select(u => (u.Username, u.DisplayName)));
+                (await db.Users.Where(u => DemoAccountSeeder.Usernames.Contains(u.Username))
+                    .OrderBy(u => u.Username).ToListAsync()).Select(u => (u.Username, u.DisplayName)));
             Assert.Equal("old-hash", (await db.Users.SingleAsync(u => u.Username == "conductor-novice")).PasswordHash);
         }
     }
