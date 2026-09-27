@@ -64,31 +64,46 @@ public class ContentSeederTests
         Assert.Equal(("только в переноске", "Ситуации на борту, №4"), (pet.ExplanationKeyFact, pet.Source));
     }
 
+    private static readonly string[] BlitzTypes = [QuestionTypes.Single, QuestionTypes.Multiple, QuestionTypes.Sequence];
+
+    // Верные ответы и порядок — из «Ситуаций на борту».
+    private static readonly Dictionary<string, string[]> BlitzAnswers = new()
+    {
+        ["bz-alcohol-bistro"] = ["Только в вагоне-бистро"],
+        ["bz-dead-phone-ticket"] = ["Проверить данные билета по документу, на который он оформлен"],
+        ["bz-unattended-item"] = ["Не трогать вещь", "Сообщить начальнику поезда", "Сообщить сотрудникам ПТБ по поездной радиосвязи"],
+        ["bz-passenger-unwell"] =
+            ["Вызвать начальника поезда любым доступным способом", "Спросить о медиках среди пассажиров по громкой связи", "Оказать помощь в рамках своей компетенции"],
+        ["bz-role-model"] = ["Признать ситуацию", "Обозначить правило", "Предложить решение", "Заверить"],
+        ["bz-pet-carrier-steps"] =
+            ["Вежливо напомнить правила провоза питомцев", "Предложить разместить животное в переноске, при продаже на борту — приобрести её", "При отказе вызвать начальника поезда"],
+    };
+
     [Fact]
     public async Task Empty_database_gets_published_blitz_questions_of_three_types()
     {
         await Seed();
 
         await using var db = new AppDbContext(_options);
-        var blitz = await db.Questions
-            .Where(q => q.Type == QuestionTypes.Single || q.Type == QuestionTypes.Multiple || q.Type == QuestionTypes.Sequence)
-            .ToListAsync();
-        Assert.All(new[] { QuestionTypes.Single, QuestionTypes.Multiple, QuestionTypes.Sequence },
-            type => Assert.True(blitz.Count(q => q.Type == type) >= 2, $"{type}: меньше двух Вопросов"));
+        var blitz = await db.Questions.Where(q => BlitzTypes.Contains(q.Type)).ToListAsync();
+        Assert.All(BlitzTypes, type => Assert.True(blitz.Count(q => q.Type == type) >= 2, $"{type}: меньше двух Вопросов"));
         Assert.All(blitz, q =>
         {
             Assert.Equal(QuestionStatuses.Published, q.Status);
-            Assert.True(QuestionValidator.ValidateForPublication(q, SeedContent.Directory).IsValid, q.Id);
             Assert.False(string.IsNullOrWhiteSpace(q.Quote), $"{q.Id}: нет цитаты");
-            Assert.StartsWith("Ситуации на борту", q.Source);
+            Assert.Matches(@"^Ситуации на борту, (№\d+|раздел «.+»)", q.Source);
         });
-
-        // Ожидания — из «Ситуаций на борту»: ролевая модель и №21.
-        var roleModel = Assert.IsType<SequenceOptions>(blitz.Single(q => q.Id == "bz-role-model").ReadOptions());
-        Assert.Equal(["Признать ситуацию", "Обозначить правило", "Предложить решение", "Заверить"], roleModel.Steps.Select(s => s.Text));
-        var alcohol = Assert.IsType<ChoiceOptions>(blitz.Single(q => q.Id == "bz-alcohol-bistro").ReadOptions());
-        Assert.Equal("Только в вагоне-бистро", alcohol.Options.Single(o => o.Correct).Text);
+        Assert.Equal(BlitzAnswers.Keys.Order(), blitz.Select(q => q.Id).Order());
+        Assert.All(blitz, q => Assert.Equal(BlitzAnswers[q.Id], Answer(q)));
     }
+
+    /// <summary>Верные варианты в порядке показа или шаги в верном порядке.</summary>
+    private static IEnumerable<string> Answer(QuestionRecord question) => question.ReadOptions() switch
+    {
+        ChoiceOptions choice => choice.Options.Where(o => o.Correct).Select(o => o.Text),
+        SequenceOptions sequence => sequence.Steps.Select(s => s.Text),
+        var other => throw new InvalidOperationException($"{question.Id}: не Вопрос Блица ({other.GetType().Name})"),
+    };
 
     [Fact]
     public async Task Repeated_start_creates_no_duplicates()
@@ -98,7 +113,7 @@ public class ContentSeederTests
 
         await using var db = new AppDbContext(_options);
         Assert.Equal(
-            (2, 4, 3, 1, SeedContent.Questions.Count),
+            (2, 4, 3, 1, 21),
             (await db.Scales.CountAsync(), await db.ServiceClasses.CountAsync(),
              await db.EventDocuments.CountAsync(), await db.TripSettings.CountAsync(), await db.Questions.CountAsync()));
     }
@@ -124,22 +139,21 @@ public class ContentSeederTests
         }
     }
 
-    [Fact]
-    public async Task Invalid_blitz_seed_stops_loading_with_question_id_and_field()
+    [Theory]
+    [InlineData("""{"steps":[{"id":"a","text":"Признать ситуацию"},{"id":"b","text":"Заверить"}]}""", "options.steps")]
+    [InlineData("""{"steps":42}""", "options.steps")]
+    [InlineData("""{"steps":[{"id":"a","text":"Признать ситуацию"},{"id":"a","text":""},{"id":"c","text":"Заверить"}]}""", "options.steps[1].text")]
+    public async Task Invalid_blitz_seed_stops_loading_with_question_id_and_field(string options, string field)
     {
         var valid = SeedContent.Questions.Single(q => q.Id == "bz-role-model");
-        var broken = valid with
-        {
-            Id = "bz-broken",
-            Options = JsonDocument.Parse("""{"steps":[{"id":"a","text":"Признать ситуацию"},{"id":"b","text":"Заверить"}]}""").RootElement,
-        };
+        var broken = valid with { Id = "bz-broken", Options = JsonDocument.Parse(options).RootElement };
 
         await using var db = new AppDbContext(_options);
         var error = await Assert.ThrowsAsync<InvalidOperationException>(
             () => new ContentSeeder(db, [valid, broken]).SeedAsync(CancellationToken.None));
 
         Assert.Contains("'bz-broken'", error.Message);
-        Assert.Contains("options.steps", error.Message);
+        Assert.Contains(field, error.Message);
         Assert.Empty(await db.Questions.ToListAsync());
     }
 }
