@@ -90,6 +90,11 @@ public sealed class FakeLlmClient : ILlmClient
     {
         Calls++;
         await Task.CompletedTask;
+        if (request.UserPrompt.Contains("\"choice\":\"c\"", StringComparison.Ordinal))
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            yield break;
+        }
         if (Fail || request.UserPrompt.Contains("\"choice\":\"b\"", StringComparison.Ordinal))
             throw new LlmProviderException("LlmProviderError", "Тестовая ошибка Qwen");
         yield return new LlmToken("Пассажир отвечает", "fake-qwen");

@@ -208,6 +208,24 @@ public class TripApiTests(TripApiFactory factory) : IClassFixture<TripApiFactory
     }
 
     [Fact]
+    public async Task Client_cancellation_is_recorded_as_explicit_reply_error()
+    {
+        var trip = await TripClient.Start(factory, "business");
+        await trip.Choose("a", "a");
+        await trip.Proactive("obhod");
+        var attemptId = Guid.NewGuid().ToString("N");
+        var first = await trip.PostVoice("c", attemptId);
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => trip.StreamReply(attemptId, cancellation.Token));
+        await Task.Delay(100);
+
+        var row = await factory.Database(db => db.TripJournal.SingleAsync(item => item.TripId == trip.Id && item.Kind == "voiceAttempt"));
+        Assert.Equal("LlmClientDisconnected", row.VoiceReplyError);
+    }
+
+    [Fact]
     public async Task Answer_later_than_timer_and_tolerance_follows_timeout_branch()
     {
         var trip = await TripClient.Start(factory, "standard");
@@ -290,8 +308,8 @@ public class TripApiTests(TripApiFactory factory) : IClassFixture<TripApiFactory
             return await http.PostAsync($"/api/trips/{Id}/voice", form);
         }
 
-        public Task<HttpResponseMessage> StreamReply(string attemptId) =>
-            http.GetAsync($"/api/trips/{Id}/voice/{attemptId}/reply");
+        public Task<HttpResponseMessage> StreamReply(string attemptId, CancellationToken cancellationToken = default) =>
+            http.GetAsync($"/api/trips/{Id}/voice/{attemptId}/reply", cancellationToken);
 
         public async Task<JsonNode> Get() =>
             (await (await http.GetAsync($"/api/trips/{Id}")).Content.ReadFromJsonAsync<JsonNode>())!;
