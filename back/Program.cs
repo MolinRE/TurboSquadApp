@@ -245,6 +245,7 @@ app.MapTripEndpoints();
 app.MapAnalyticsEndpoints();
 app.MapSwipeEndpoints();
 app.MapProfileEndpoints();
+app.MapLeaderboardEndpoints();
 app.MapQuestionBankEndpoints();
 app.MapSourceEndpoints();
 app.MapEventCmsEndpoints();
