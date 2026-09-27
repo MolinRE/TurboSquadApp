@@ -66,6 +66,7 @@ builder.Services.AddScoped<TripService>();
 builder.Services.AddScoped<VoiceAnalyticsService>();
 builder.Services.AddScoped<SwipeShiftService>();
 builder.Services.AddScoped<QuestionBankService>();
+builder.Services.AddScoped<EventCmsService>();
 builder.Services.AddScoped<SourceService>();
 builder.Services.AddScoped<QuestionGenerationService>();
 builder.Services.AddSingleton(Random.Shared);   // колода Смены на свайпах; в тестах — с зерном
@@ -178,17 +179,47 @@ app.MapPost("/api/auth/login", async (
     .WithDescription("Проверяет логин и пароль и возвращает Bearer-токен для защищённых API-методов. Ошибки входа не раскрывают причину отказа.")
     .AllowAnonymous();
 
-app.MapGet("/api/auth/me", (HttpContext context) =>
-    Results.Ok(new
+app.MapPost("/api/auth/demo-login", async (
+    DemoLoginRequest request,
+    LoginService loginService,
+    IConfiguration configuration,
+    CancellationToken cancellationToken) =>
+{
+    if (!configuration.GetValue("DemoAccounts:LoginEnabled", true)) return Results.NotFound();
+    var result = await loginService.DemoLoginAsync(request, cancellationToken);
+    return result.IsValid ? Results.Ok(result.Response) : Results.Unauthorized();
+})
+    .Accepts<DemoLoginRequest>("application/json")
+    .Produces<TokenResponse>()
+    .Produces(StatusCodes.Status401Unauthorized)
+    .Produces(StatusCodes.Status404NotFound)
+    .WithName("DemoLogin")
+    .WithSummary("Войти в демо-аккаунт без пароля")
+    .WithDescription("Для кнопок «Войти как…» и жюри: выдаёт Bearer-токен демо-аккаунтам conductor-star, conductor-novice и manager-methodologist без пароля. Другие логины и не засеянные аккаунты — 401. Настройка DemoAccounts:LoginEnabled=false выключает метод — 404.")
+    .AllowAnonymous();
+
+app.MapGet("/api/auth/me", async (HttpContext context, AppDbContext dbContext, CancellationToken cancellationToken) =>
+{
+    var userId = Guid.Parse(context.User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+    var user = await dbContext.Users
+        .Include(item => item.Brigade)
+        .Include(item => item.Depot)
+        .SingleOrDefaultAsync(item => item.Id == userId, cancellationToken);
+    if (user is null) return Results.Unauthorized();
+    return Results.Ok(new
     {
-        UserId = context.User.FindFirstValue(ClaimTypes.NameIdentifier),
-        Username = context.User.Identity?.Name,
-        Roles = context.User.FindAll(ClaimTypes.Role).Select(claim => claim.Value).Distinct().ToArray()
-    }))
+        UserId = user.Id,
+        user.Username,
+        user.DisplayName,
+        Roles = context.User.FindAll(ClaimTypes.Role).Select(claim => claim.Value).Distinct().ToArray(),
+        Brigade = user.Brigade?.Name,
+        Depot = user.Depot?.Name,
+    });
+})
     .RequireAuthorization()
     .WithName("GetCurrentUser")
     .WithSummary("Получить текущего пользователя")
-    .WithDescription("Возвращает идентификатор, логин и роли пользователя из проверенного Bearer-токена.")
+    .WithDescription("Возвращает идентификатор, логин, роли пользователя из проверенного Bearer-токена, а также его имя, бригаду и депо из базы — их показывают экраны.")
     .Produces(StatusCodes.Status401Unauthorized);
 
 app.MapGet("/api/auth/role-check/manager", () => Results.Ok(new { Role = UserRoles.Manager }))
@@ -213,6 +244,7 @@ app.MapAnalyticsEndpoints();
 app.MapSwipeEndpoints();
 app.MapQuestionBankEndpoints();
 app.MapSourceEndpoints();
+app.MapEventCmsEndpoints();
 
 app.Run();
 

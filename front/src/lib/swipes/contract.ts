@@ -125,6 +125,18 @@ export type AnswerOutcome = {
   shift: ShiftState;
 };
 
+/** Код отказа правил в ответе 409 (payload.reason). */
+export type ShiftRejection =
+  | "ShiftNotRunning"
+  | "StaleCard"
+  | "CardNotShown"
+  | "NoTimeLimit"
+  | "TimeNotExpired"
+  | "NoNextCycle"
+  | "ShiftNotFinished"
+  | "NoMistakes"
+  | "NoPublishedQuestions";
+
 export interface SwipesApi {
   startShift(mode: ShiftMode): Promise<ShiftState>;
   /** Текущее состояние, чтобы продолжить Смену после перезагрузки. */

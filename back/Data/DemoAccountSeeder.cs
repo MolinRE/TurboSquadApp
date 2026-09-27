@@ -49,6 +49,9 @@ public sealed class DemoAccountSeeder(
                 dbContext.Users.Add(user);
             }
 
+            // Имя — как на экране «Войти как…»: засев выравнивает его и у уже созданных аккаунтов, пароль не трогает.
+            user.DisplayName = definition.DisplayName;
+
             foreach (var role in definition.Roles)
             {
                 if (user.Roles.All(existing => existing.Role != role))
@@ -61,25 +64,28 @@ public sealed class DemoAccountSeeder(
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
-    private IReadOnlyList<DemoAccountDefinition> CreateDefinitions() =>
+    /// <summary>Логины демо-аккаунтов: только они входят без пароля через демо-вход.</summary>
+    public static IReadOnlyList<string> Usernames { get; } = CreateDefinitions().Select(account => account.Username).ToList();
+
+    private static IReadOnlyList<DemoAccountDefinition> CreateDefinitions() =>
     [
         new(
             "conductor-star",
-            "Проводник-отличник",
+            "Марина Соколова",
             Guid.Parse("30000000-0000-0000-0000-000000000001"),
             NorthDepotId,
             NorthBrigadeOneId,
             [UserRoles.Conductor]),
         new(
             "conductor-novice",
-            "Проводник-новичок",
+            "Игорь Лебедев",
             Guid.Parse("30000000-0000-0000-0000-000000000002"),
             NorthDepotId,
             NorthBrigadeTwoId,
             [UserRoles.Conductor]),
         new(
             "manager-methodologist",
-            "Руководитель-методист",
+            "Ольга Верещагина",
             Guid.Parse("30000000-0000-0000-0000-000000000003"),
             NorthDepotId,
             NorthBrigadeOneId,
