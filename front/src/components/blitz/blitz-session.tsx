@@ -64,7 +64,8 @@ function sessionGone(error: unknown) {
 
 /**
  * Блиц через API: вердикт и время считает сервер, экран показывает. Вопрос с одним ответом
- * (нажатие на вариант — ответ) или с несколькими (отметить варианты и «Ответить»), обратный
+ * (нажатие на вариант — ответ), с несколькими (отметить варианты и «Ответить») или последовательность
+ * (расставить шаги по порядку и «Ответить»), обратный
  * отсчёт от показа; истёк — «Время вышло». После ответа — панель с верными вариантами
  * и Пояснением, следующий Вопрос (и его таймер) — по «Дальше». Незаконченную сессию экран
  * продолжает и после перезагрузки.
@@ -183,7 +184,11 @@ export function BlitzSession() {
       const outcome =
         selected === null
           ? await blitzApi.timeOut(session.sessionId, question.questionId)
-          : await blitzApi.answer(session.sessionId, question.questionId, selected);
+          : await blitzApi.answer(
+              session.sessionId,
+              question.questionId,
+              question.type === "sequence" ? { orderedStepIds: selected } : { selectedOptionIds: selected },
+            );
       setLast({ question, selected, outcome });
       setSession(outcome.session);
       setPhase({ kind: "feedback" });
@@ -291,8 +296,8 @@ function BlitzStart({ onStart }: { onStart: () => void }) {
         </span>
         <h1 className="text-2xl font-extrabold tracking-tight">Блиц</h1>
         <p className="text-sm text-muted-foreground">
-          Вопросы на время: выберите верный ответ, а если верных несколько — отметьте все, пока не закончился отсчёт.
-          После каждого ответа — Пояснение с пунктом Источника.
+          Вопросы на время: выберите верный ответ, отметьте все верные или расставьте шаги по порядку, пока не закончился
+          отсчёт. После каждого ответа — Пояснение с пунктом Источника.
         </p>
         <p className="flex items-center gap-1.5 text-sm font-bold text-brand">
           <Timer className="size-4" aria-hidden />
@@ -308,7 +313,8 @@ function BlitzStart({ onStart }: { onStart: () => void }) {
 
 /**
  * Вопрос: прогресс и обратный отсчёт в шапке, Тема, формулировка и варианты во всю ширину.
- * single — нажатие на вариант сразу отвечает; multiple — варианты отмечаются, ответ по «Ответить».
+ * single — нажатие на вариант сразу отвечает; multiple — варианты отмечаются, ответ по «Ответить»;
+ * sequence — шаги нумеруются в порядке нажатия (повторное нажатие убирает шаг), ответ по «Ответить», когда расставлены все.
  */
 function QuestionCard({
   session,
@@ -331,8 +337,12 @@ function QuestionCard({
   onExpire: () => void;
 }) {
   const multiple = question.type === "multiple";
-  /** Отмеченные варианты multiple в порядке нажатия: сервер порядок не учитывает. */
+  const sequence = question.type === "sequence";
+  /** Варианты отмечаются, а ответ уходит по «Ответить». */
+  const pickable = multiple || sequence;
+  /** Отмеченные варианты или шаги в порядке нажатия: у multiple сервер порядок не учитывает, у sequence это и есть ответ. */
   const [picked, setPicked] = useState<string[]>([]);
+  const ready = sequence ? picked.length === question.options.length : picked.length > 0;
 
   function toggle(optionId: string) {
     setPicked((ids) => (ids.includes(optionId) ? ids.filter((id) => id !== optionId) : [...ids, optionId]));
@@ -350,16 +360,19 @@ function QuestionCard({
       </Badge>
       <p className="text-lg leading-snug font-bold">{question.statement}</p>
       {multiple ? <p className="-mt-2 text-sm text-muted-foreground">Верных несколько — отметьте все</p> : null}
+      {sequence ? (
+        <p className="-mt-2 text-sm text-muted-foreground">Нажимайте шаги по порядку, с первого. Повторное нажатие убирает шаг</p>
+      ) : null}
       <div className="grid gap-2">
         {question.options.map((option) => {
-          const checked = multiple && picked.includes(option.id);
+          const checked = pickable && picked.includes(option.id);
           return (
             <Button
               key={option.id}
               variant="outline"
               disabled={disabled}
-              aria-pressed={multiple ? checked : undefined}
-              onClick={() => (multiple ? toggle(option.id) : onAnswer([option.id]))}
+              aria-pressed={pickable ? checked : undefined}
+              onClick={() => (pickable ? toggle(option.id) : onAnswer([option.id]))}
               className={cn(
                 "h-auto min-h-12 justify-start bg-card px-4 py-3 text-left text-base font-bold whitespace-normal",
                 checked && "border-brand bg-brand-soft hover:bg-brand-soft",
@@ -373,13 +386,14 @@ function QuestionCard({
                   <Square className="size-5 text-muted-foreground" aria-hidden />
                 )
               ) : null}
+              {sequence ? <StepNumber position={checked ? picked.indexOf(option.id) + 1 : null} /> : null}
               {option.text}
             </Button>
           );
         })}
       </div>
-      {multiple ? (
-        <Button disabled={disabled || picked.length === 0} onClick={() => onAnswer(picked)} className="h-12 text-base font-bold">
+      {pickable ? (
+        <Button disabled={disabled || !ready} onClick={() => onAnswer(picked)} className="h-12 text-base font-bold">
           Ответить
         </Button>
       ) : null}
@@ -390,9 +404,21 @@ function QuestionCard({
   );
 }
 
+/** Номер шага в собранном порядке; null — шаг ещё не поставлен. */
+function StepNumber({ position }: { position: number | null }) {
+  return position === null ? (
+    <span className="size-6 shrink-0 rounded-full border-2 border-dashed border-border" aria-hidden />
+  ) : (
+    <span className="grid size-6 shrink-0 place-items-center rounded-full bg-brand text-xs font-bold text-white tabular-nums">
+      {position}
+    </span>
+  );
+}
+
 /**
  * Панель после ответа: вердикт, варианты с верными и выбранными, Пояснение; следующий Вопрос — по кнопке.
- * У multiple верный, но не отмеченный вариант подписан «Не отмечен».
+ * У multiple верный, но не отмеченный вариант подписан «Не отмечен». У sequence — шаги в верном порядке:
+ * шаг на своём месте отмечен как верный, не на своём — «У вас №N».
  */
 function FeedbackPanel({
   session,
@@ -421,33 +447,37 @@ function FeedbackPanel({
         )}
       </div>
       <p className="text-sm text-muted-foreground">{question.statement}</p>
-      <ul className="grid gap-2">
-        {question.options.map((option) => {
-          const isCorrect = correct.has(option.id);
-          const isPicked = selected?.includes(option.id) ?? false;
-          const isWrongPick = isPicked && !isCorrect;
-          const isMissed = question.type === "multiple" && selected !== null && isCorrect && !isPicked;
-          return (
-            <li
-              key={option.id}
-              className={cn(
-                "flex items-start gap-2 rounded-lg border px-3 py-2.5 text-sm",
-                isCorrect ? "border-brand bg-brand-soft font-bold" : isWrongPick ? "border-danger bg-danger-soft" : "border-border text-muted-foreground",
-              )}
-            >
-              {isCorrect ? (
-                <CircleCheck className="mt-0.5 size-4 shrink-0 text-brand" aria-label="Верный вариант" />
-              ) : isWrongPick ? (
-                <CircleX className="mt-0.5 size-4 shrink-0 text-danger" aria-label="Ваш ответ" />
-              ) : (
-                <span className="size-4 shrink-0" aria-hidden />
-              )}
-              <span className="flex-1">{option.text}</span>
-              {isMissed ? <span className="shrink-0 text-xs font-bold text-muted-foreground">Не отмечен</span> : null}
-            </li>
-          );
-        })}
-      </ul>
+      {question.type === "sequence" ? (
+        <SequenceFeedback question={question} selected={selected} correctOrder={outcome.correctOptionIds} />
+      ) : (
+        <ul className="grid gap-2">
+          {question.options.map((option) => {
+            const isCorrect = correct.has(option.id);
+            const isPicked = selected?.includes(option.id) ?? false;
+            const isWrongPick = isPicked && !isCorrect;
+            const isMissed = question.type === "multiple" && selected !== null && isCorrect && !isPicked;
+            return (
+              <li
+                key={option.id}
+                className={cn(
+                  "flex items-start gap-2 rounded-lg border px-3 py-2.5 text-sm",
+                  isCorrect ? "border-brand bg-brand-soft font-bold" : isWrongPick ? "border-danger bg-danger-soft" : "border-border text-muted-foreground",
+                )}
+              >
+                {isCorrect ? (
+                  <CircleCheck className="mt-0.5 size-4 shrink-0 text-brand" aria-label="Верный вариант" />
+                ) : isWrongPick ? (
+                  <CircleX className="mt-0.5 size-4 shrink-0 text-danger" aria-label="Ваш ответ" />
+                ) : (
+                  <span className="size-4 shrink-0" aria-hidden />
+                )}
+                <span className="flex-1">{option.text}</span>
+                {isMissed ? <span className="shrink-0 text-xs font-bold text-muted-foreground">Не отмечен</span> : null}
+              </li>
+            );
+          })}
+        </ul>
+      )}
       <p className="text-base leading-relaxed">
         <ExplanationText explanation={outcome.explanation} />
       </p>
@@ -456,6 +486,48 @@ function FeedbackPanel({
         {finished ? "К итогу" : "Дальше"}
       </Button>
     </section>
+  );
+}
+
+/** Шаги в верном порядке; selected — порядок Проводника, null — «Время вышло»: тогда без отметок. */
+function SequenceFeedback({
+  question,
+  selected,
+  correctOrder,
+}: {
+  question: BlitzQuestion;
+  selected: string[] | null;
+  correctOrder: string[];
+}) {
+  return (
+    <ol className="grid gap-2">
+      {correctOrder.map((stepId, at) => {
+        const text = question.options.find((option) => option.id === stepId)?.text;
+        const inPlace = selected?.[at] === stepId;
+        const theirs = selected ? selected.indexOf(stepId) + 1 : 0;
+        return (
+          <li
+            key={stepId}
+            className={cn(
+              "flex items-start gap-2 rounded-lg border px-3 py-2.5 text-sm font-bold",
+              selected && !inPlace ? "border-danger bg-danger-soft" : "border-brand bg-brand-soft",
+            )}
+          >
+            <span className="grid size-5 shrink-0 place-items-center rounded-full bg-brand text-xs text-white tabular-nums">
+              {at + 1}
+            </span>
+            <span className="flex-1">{text}</span>
+            {selected ? (
+              inPlace ? (
+                <CircleCheck className="mt-0.5 size-4 shrink-0 text-brand" aria-label="На своём месте" />
+              ) : (
+                <span className="shrink-0 text-xs text-danger tabular-nums">У вас №{theirs}</span>
+              )
+            ) : null}
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 
