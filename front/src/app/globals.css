@@ -142,6 +142,16 @@
   --sidebar-ring: #54aea4;
 }
 
+/* Полоска паузы после верного ответа в Смене на свайпах: длительность задаёт компонент. */
+@keyframes pause-bar {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

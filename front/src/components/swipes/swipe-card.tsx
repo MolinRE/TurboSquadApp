@@ -4,6 +4,7 @@ import { useRef, useState, type PointerEvent } from "react";
 import { cn } from "cn";
 import { Badge } from "@/components/ui/badge";
 import { TopicIcon } from "@/components/game/topic-icon";
+import { TypedText } from "@/components/game/typed-text";
 import type { ShiftCard, SwipeAnswer } from "@/lib/swipes/contract";
 
 /** Смещение, после которого отпущенная карточка засчитывается ответом; короткое касание не отвечает. */
@@ -39,19 +40,21 @@ const exitTransform: Record<SwipeAnswer, string> = {
 };
 
 /**
- * Карточка Смены: тянется пальцем или мышью. Отпущенная за порогом — ответ,
- * до порога — возвращается на место. exitTo уводит её в сторону ответа
- * (в том числе когда ответили кнопкой).
+ * Карточка Смены: формулировка печатается за card.readingMs, затем onReady. Карточка
+ * тянется пальцем или мышью: отпущенная за порогом — ответ, до порога — возвращается
+ * на место. exitTo уводит её в сторону ответа (в том числе когда ответили кнопкой).
  */
 export function SwipeCard({
   card,
   exitTo,
   disabled,
+  onReady,
   onAnswer,
 }: {
   card: ShiftCard;
   exitTo: SwipeAnswer | null;
   disabled: boolean;
+  onReady: () => void;
   onAnswer: (answer: SwipeAnswer) => void;
 }) {
   const start = useRef<Offset | null>(null);
@@ -100,7 +103,7 @@ export function SwipeCard({
       aria-label="Карточка"
       {...handlers}
       className={cn(
-        "absolute inset-0 flex touch-none flex-col gap-4 rounded-xl bg-card p-5 shadow-xl shadow-foreground/10 select-none",
+        "relative flex min-h-40 touch-none flex-col gap-4 rounded-xl bg-card p-5 shadow-xl shadow-foreground/10 select-none",
         !disabled && "cursor-grab active:cursor-grabbing",
       )}
       style={{
@@ -126,7 +129,9 @@ export function SwipeCard({
         ) : null}
       </div>
 
-      <p className="text-xl leading-snug font-bold text-pretty">{card.statement}</p>
+      <p className="text-xl leading-snug font-bold text-pretty">
+        <TypedText text={card.statement} durationMs={card.readingMs} onDone={onReady} />
+      </p>
 
       <SwipeHint answer={leaning} opacity={hintOpacity} card={card} />
     </article>
@@ -157,7 +162,7 @@ function SwipeHint({
     <span
       aria-hidden
       className={cn(
-        "pointer-events-none absolute bottom-6 max-w-[70%] rounded-lg border-2 bg-card px-3 py-1.5 text-center text-sm font-extrabold uppercase",
+        "pointer-events-none absolute top-4 max-w-[70%] rounded-lg border-2 bg-card px-3 py-1.5 text-center text-sm font-extrabold uppercase",
         hint.className,
       )}
       style={{ opacity }}
