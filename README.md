@@ -102,6 +102,5 @@ flowchart LR
 | `/api/analytics/*` | аналитика руководителя и задержки голосового конвейера |
 | `/api/cms/sources/*` | Источники и генерация черновиков вопросов/Событий |
 | `/api/cms/questions/*`, `/api/cms/events/*` | банк вопросов, JSON-графы и публикация версий |
-| `/api/integration/*` | успеваемость Проводника для HR-систем по ключу сервиса — [docs/api.md](docs/api.md) |
 
-Защищённые методы используют `Authorization: Bearer <JWT>`, интеграционные — заголовок `X-Api-Key` (см. [docs/api.md](docs/api.md)).
+Защищённые методы используют `Authorization: Bearer <JWT>`
