@@ -8,7 +8,7 @@ using TurboSquadApp.Voice;
 
 public sealed record QuestionGenerationPrompt(
     string SourceTitle, string Section, string Text, IReadOnlyList<string> Topics,
-    string? Feedback, string? PreviousOutput = null, int MaxTokens = 8_000);
+    string? Feedback, string? PreviousOutput = null, int MaxTokens = 8_000, string? Model = null);
 
 public sealed record QuestionGenerationResponse(string Content, string? FinishReason);
 
@@ -63,7 +63,7 @@ public sealed class PolzaQuestionGenerationClient(HttpClient httpClient, VoiceOp
             userPrompt += $"\nПредыдущий ответ:\n{prompt.PreviousOutput}\nИсправь ошибки: {prompt.Feedback}";
         var payload = new
         {
-            model = options.LlmModel,
+            model = prompt.Model ?? options.LlmModel,
             stream = false,
             max_tokens = prompt.MaxTokens,
             response_format = new { type = "json_schema", json_schema = new { name = "question_drafts", strict = true, schema = ResponseSchema } },

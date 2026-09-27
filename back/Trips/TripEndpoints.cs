@@ -85,6 +85,13 @@ public static class TripEndpoints
             .WithSummary("Разбор Рейса, слой А")
             .WithDescription("Только по законченному Рейсу: итог, Проактивный выбор, по каждому Событию — результат и решения с изменениями Шкал, комментарием и Источником.");
 
+        trips.MapGet("/debriefs", (HttpContext http, TripService service, CancellationToken ct) =>
+                service.ListDebriefsAsync(UserId(http), ct))
+            .Produces<IReadOnlyList<TripDebriefListItem>>()
+            .WithName("ListTripDebriefs")
+            .WithSummary("История Разборов завершённых Рейсов")
+            .WithDescription("Только Рейсы текущего Проводника, новые сначала.");
+
         return app;
     }
 

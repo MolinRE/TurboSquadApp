@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { LoaderCircle, Mic, Square } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import { TripDebriefFacts, roleStageSummary } from "@/components/game/trip-debrief-facts";
 import {
   ApiError,
   chooseProactive,
@@ -26,22 +28,8 @@ const serviceClasses = [
   ["first", "Первый"],
 ] as const;
 
-const roleStages = [
-  ["acknowledge", "Признание"],
-  ["rule", "Правило"],
-  ["solution", "Решение"],
-  ["reassure", "Заверение"],
-] as const;
-
 function apiMessage(error: unknown): string {
   return error instanceof ApiError ? error.message : "Не удалось связаться с сервером";
-}
-
-function roleStageSummary(stages: Record<string, number>): string {
-  return roleStages
-    .filter(([code]) => stages[code] !== undefined)
-    .map(([code, name]) => `${name} ${Math.round(stages[code] * 100)}%`)
-    .join(" · ");
 }
 
 export function TripGame() {
@@ -144,21 +132,8 @@ export function TripGame() {
           <CardHeader><Badge variant={trip.status === "arrived" ? "default" : "destructive"}>Рейс завершён</Badge><CardTitle>{trip.result.summary}</CardTitle></CardHeader>
           <CardContent className="flex flex-col gap-4">
             {debriefError && <p role="alert" className="text-sm text-danger">Разбор не загрузился: {debriefError}</p>}
-            {debrief?.voiceAttempts.length ? (
-              <section aria-label="Разбор голосовых ответов" className="flex flex-col gap-3">
-                <h3 className="font-semibold">Разбор голосовых ответов</h3>
-                {debrief.voiceAttempts.map((attempt) => (
-                  <div key={attempt.attemptId} className="rounded-lg bg-muted p-3 text-sm">
-                    <p className="font-semibold">Событие {attempt.eventId}, версия {attempt.eventVersion}, Шаг {attempt.stepId}</p>
-                    {attempt.transcript && <p className="mt-1">«{attempt.transcript}»</p>}
-                    {attempt.score !== null && <p className="mt-1">Вежливость: {Math.round(attempt.score * 100)}%{attempt.scoreConfidence !== null && ` · уверенность ${Math.round(attempt.scoreConfidence * 100)}%`}</p>}
-                    {attempt.roleStages && <p className="mt-1">Ролевая модель: {roleStageSummary(attempt.roleStages)}</p>}
-                    {attempt.safetyViolation !== null && <p className="mt-1">Риск нарушения безопасности: {Math.round(attempt.safetyViolation * 100)}%{attempt.safetyConfidence !== null && ` · уверенность ${Math.round(attempt.safetyConfidence * 100)}%`}</p>}
-                    {attempt.errorCode && <p className="mt-1 text-danger">Ошибка: {attempt.errorCode}</p>}
-                  </div>
-                ))}
-              </section>
-            ) : null}
+            {debrief && <TripDebriefFacts debrief={debrief} />}
+            {debrief && <Button asChild variant="outline"><Link href={`/reviews/trip-${trip.id}`}>Открыть Разбор</Link></Button>}
             <Button variant="outline" onClick={() => { setTrip(null); setDebrief(null); setError(null); }}>Новый Рейс</Button>
           </CardContent>
         </Card>

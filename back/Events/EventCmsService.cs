@@ -12,6 +12,7 @@ public sealed record EventSummary(
 public sealed record EventVersionView(string Id, int Version, DateTimeOffset PublishedAt, string Document);
 public sealed record EventEditorRequest(string Document);
 public sealed record PublishEventRequest(int ExpectedVersion, string Document);
+public sealed record EventDraftView(Guid Id, Guid? SourceId, string Document, DateTimeOffset CreatedAt);
 
 /// <summary>Опубликованные версии Событий и проверка JSON редактора Методиста.</summary>
 public sealed class EventCmsService(AppDbContext db, TimeProvider clock)
@@ -43,6 +44,104 @@ public sealed class EventCmsService(AppDbContext db, TimeProvider clock)
         var record = await db.EventDocuments.AsNoTracking()
             .SingleOrDefaultAsync(row => row.EventId == id && row.Version == version, cancellationToken);
         return record is null ? Results.NotFound() : Results.Ok(View(record));
+    }
+
+    public async Task<IResult> ListDraftsAsync(Guid? sourceId, CancellationToken cancellationToken)
+    {
+        var drafts = await db.EventDrafts.AsNoTracking()
+            .Where(draft => sourceId == null || draft.SourceId == sourceId)
+            .OrderByDescending(draft => draft.CreatedAt).ToListAsync(cancellationToken);
+        return Results.Ok(drafts.Select(DraftView).ToList());
+    }
+
+    public async Task<IResult> GetDraftAsync(Guid draftId, CancellationToken cancellationToken)
+    {
+        var draft = await db.EventDrafts.AsNoTracking()
+            .SingleOrDefaultAsync(item => item.Id == draftId, cancellationToken);
+        return draft is null ? Results.NotFound() : Results.Ok(DraftView(draft));
+    }
+
+    public async Task<IResult> CreateDraftAsync(CancellationToken cancellationToken)
+    {
+        var draftId = Guid.NewGuid();
+        var document = new EventDocument
+        {
+            Id = $"event-{draftId:N}", Version = 1, Title = "Новое Событие",
+            Topic = "Посадка и документы", Start = "start",
+            Steps =
+            [
+                new Step { Id = "start", AnswerType = "buttons", Situation = "Опишите ситуацию",
+                    Variants =
+                    [
+                        new Variant { Id = "a", Text = "Первый вариант",
+                            Transitions = [new Transition { To = "success" }] },
+                        new Variant { Id = "b", Text = "Второй вариант",
+                            Transitions = [new Transition { To = "failure" }] },
+                    ] },
+                new Step { Id = "success", Outcome = "success", Situation = "Удачный Исход" },
+                new Step { Id = "failure", Outcome = "failure", Situation = "Неудачный Исход" },
+            ],
+        };
+        var draft = new EventDraftRecord
+        {
+            Id = draftId, Document = JsonSerializer.Serialize(document, EventJson.Options),
+            CreatedAt = clock.GetUtcNow(),
+        };
+        db.EventDrafts.Add(draft);
+        await db.SaveChangesAsync(cancellationToken);
+        return Results.Created($"/api/cms/events/drafts/{draftId}", DraftView(draft));
+    }
+
+    public async Task<IResult> SaveDraftAsync(Guid draftId, EventEditorRequest request, CancellationToken cancellationToken)
+    {
+        var draft = await db.EventDrafts.SingleOrDefaultAsync(item => item.Id == draftId, cancellationToken);
+        if (draft is null) return Results.NotFound();
+        try { using var parsed = JsonDocument.Parse(request.Document); }
+        catch (JsonException) { return Results.BadRequest(new { message = "Исправьте синтаксис JSON перед сохранением" }); }
+        draft.Document = request.Document;
+        await db.SaveChangesAsync(cancellationToken);
+        return Results.Ok(DraftView(draft));
+    }
+
+    public async Task<IResult> ValidateDraftAsync(Guid draftId, CancellationToken cancellationToken)
+    {
+        var draft = await db.EventDrafts.AsNoTracking()
+            .SingleOrDefaultAsync(item => item.Id == draftId, cancellationToken);
+        return draft is null ? Results.NotFound()
+            : Results.Ok(await ReportAsync(DocumentId(draft.Document), draft.Document, cancellationToken));
+    }
+
+    public async Task<IResult> PublishDraftAsync(Guid draftId, CancellationToken cancellationToken)
+    {
+        await PublishGate.WaitAsync(cancellationToken);
+        try
+        {
+            var draft = await db.EventDrafts.SingleOrDefaultAsync(item => item.Id == draftId, cancellationToken);
+            if (draft is null) return Results.NotFound();
+            var id = DocumentId(draft.Document);
+            if (string.IsNullOrWhiteSpace(id))
+                return Results.BadRequest(new { message = "Укажите ID События в Черновике" });
+            if (await db.EventDocuments.AnyAsync(row => row.EventId == id, cancellationToken))
+                return Results.Conflict(new { message = "Событие с таким ID уже опубликовано" });
+            var report = await ReportAsync(id, draft.Document, cancellationToken);
+            if (!report.IsValid) return Results.BadRequest(report);
+            var document = JsonSerializer.Deserialize<EventDocument>(draft.Document, EventJson.Options)!;
+            var record = new EventDocumentRecord
+            {
+                EventId = id, Version = document.Version, Document = draft.Document,
+                PublishedAt = clock.GetUtcNow(),
+            };
+            db.EventDocuments.Add(record);
+            db.EventDrafts.Remove(draft);
+            try { await db.SaveChangesAsync(cancellationToken); }
+            catch (DbUpdateException exception) when (exception.InnerException is PostgresException
+                       { SqlState: PostgresErrorCodes.UniqueViolation })
+            {
+                return Results.Conflict(new { message = "Событие с таким ID уже опубликовано" });
+            }
+            return Results.Created($"/api/cms/events/{id}/versions/1", View(record));
+        }
+        finally { PublishGate.Release(); }
     }
 
     public async Task<IResult> ValidateAsync(string id, EventEditorRequest request, CancellationToken cancellationToken) =>
@@ -116,17 +215,28 @@ public sealed class EventCmsService(AppDbContext db, TimeProvider clock)
         var latestVersion = await db.EventDocuments.AsNoTracking()
             .Where(row => row.EventId == id).Select(row => (int?)row.Version)
             .MaxAsync(cancellationToken);
-        if (latestVersion is null)
+        if (parsed.Version != (latestVersion ?? 0) + 1)
             issues.Add(new ValidationIssue(Severity.Error, IssueLocation.Event,
-                $"Событие «{id}» не найдено", "ADR-0001"));
-        else if (parsed.Version != latestVersion + 1)
-            issues.Add(new ValidationIssue(Severity.Error, IssueLocation.Event,
-                $"Новая версия должна быть {latestVersion + 1}", "ADR-0001"));
+                $"Новая версия должна быть {(latestVersion ?? 0) + 1}", "ADR-0001"));
         return issues.Count == 0 ? report : report with { Errors = [.. report.Errors, .. issues] };
     }
 
     private static EventVersionView View(EventDocumentRecord record) =>
         new(record.EventId, record.Version, record.PublishedAt, record.Document);
+
+    private static EventDraftView DraftView(EventDraftRecord draft) =>
+        new(draft.Id, draft.SourceId, draft.Document, draft.CreatedAt);
+
+    private static string DocumentId(string json)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            return document.RootElement.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.String
+                ? id.GetString() ?? string.Empty : string.Empty;
+        }
+        catch (JsonException) { return string.Empty; }
+    }
 
     private static IResult VersionConflict(int latestVersion) => Results.Conflict(new
     {

@@ -6,6 +6,7 @@ import { apiJson } from "@/lib/api";
 import { useCurrentUser } from "@/lib/use-current-user";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ReviewHistory } from "@/components/profile/review-history";
 
 type Profile = { knowledgePoints: number; competencePoints: number; rank: string };
 
@@ -38,6 +39,7 @@ export function ProfileOverview() {
         <CardHeader><CardTitle className="flex items-center gap-2"><BookOpen className="size-5 text-brand" aria-hidden />Очки компетенций</CardTitle></CardHeader>
         <CardContent>{profile ? <><p className="text-4xl font-extrabold tabular-nums">{profile.competencePoints}</p><p className="mt-2 text-sm text-muted-foreground">Очки знаний: {profile.knowledgePoints}. На этом этапе Очки компетенций складываются из Знания регламента.</p></> : <Skeleton className="h-10 w-28" />}</CardContent>
       </Card>
+      <ReviewHistory />
     </main>
   );
 }

@@ -26,6 +26,20 @@ public static class SwipeEndpoints
             .WithSummary("Текущее состояние Смены")
             .WithDescription("Шкалы, прогресс, показанная карточка без верной стороны или итог: чтобы продолжить Смену после перезагрузки.");
 
+        shifts.MapGet("/debriefs", (HttpContext http, SwipeShiftService service, CancellationToken ct) =>
+                service.ListDebriefsAsync(UserId(http), ct))
+            .Produces<IReadOnlyList<SwipeDebriefListItem>>()
+            .WithName("ListSwipeDebriefs")
+            .WithSummary("История Разборов завершённых Смен");
+
+        shifts.MapGet("/{id:guid}/debrief", (Guid id, HttpContext http, SwipeShiftService service, CancellationToken ct) =>
+                service.DebriefAsync(UserId(http), id, ct))
+            .Produces<SwipeDebrief>()
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .Produces(StatusCodes.Status404NotFound)
+            .WithName("GetSwipeDebrief")
+            .WithSummary("Сохранённый Разбор Смены, слой А");
+
         shifts.MapPost("/{id:guid}/next-card", (Guid id, HttpContext http, SwipeShiftService service, CancellationToken ct) =>
                 service.ShowNextCardAsync(UserId(http), id, ct))
             .Produces<ShiftStateView>()
