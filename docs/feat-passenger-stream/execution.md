@@ -1,6 +1,6 @@
 # Execution: passenger-stream
 
-status: running
+status: done
 ticket: https://github.com/MolinRE/TurboSquadApp/issues/21
 branch: codex/passenger-stream-21
 base: origin/main (a31d300)
@@ -22,4 +22,15 @@ base: origin/main (a31d300)
 
 ## Evidence
 
-Verification receipts and review findings will be recorded here before the ticket is marked done.
+- `dotnet test TurboSquadApp.sln --no-restore` — 81 passed.
+- `dotnet build TurboSquadApp.sln --no-restore` — 0 warnings, 0 errors.
+- `front: npm run lint` — passed.
+- `front: npm run build` — passed.
+- Added `ClaimPassengerReply` migration: PostgreSQL conditional claim prevents two SSE connections from starting Qwen for one attempt.
+- Code review: standards axis found no blocking violations. Spec axis findings addressed: concurrent generation claim and duplicate current transcript in recent history. Remaining follow-up candidates are full Laya scoring fields and PII redaction, outside the accepted #21 implementation slice.
+
+## Delivery
+
+- Branch: `codex/passenger-stream-21`.
+- Commits: `5350fac`, `142648a`, `2dee638`.
+- PR and merge are intentionally not performed by this implementation run.

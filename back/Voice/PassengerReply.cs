@@ -8,6 +8,7 @@ public sealed record PassengerReplyContext(
     string? NextStepBrief,
     string? NextStepSituation,
     string? LayaChoice,
+    string? LayaChoiceText,
     double? LayaConfidence,
     string? ConductorTranscript,
     IReadOnlyList<DialogueLine> RecentLines,
@@ -20,6 +21,7 @@ public sealed record PassengerReplyContext(
     {
         var lines = state.Journal
             .OfType<VoiceAttempt>()
+            .Where(item => !string.Equals(item.AttemptId, attempt.AttemptId, StringComparison.Ordinal))
             .SelectMany(item => new[]
             {
                 item.Transcript is null ? null : new DialogueLine("conductor", item.Transcript),
@@ -34,11 +36,17 @@ public sealed record PassengerReplyContext(
             .OrderBy(scale => scale.Code, StringComparer.Ordinal)
             .Select(scale => new ScaleSnapshot(scale.Code, state.Scales[scale.Code]))
             .ToList();
+        var choiceText = attempt.Choice is null
+            ? null
+            : state.Content.Event(attempt.EventId).Steps
+                .Single(step => step.Id == attempt.StepId).Variants?
+                .SingleOrDefault(variant => variant.Id == attempt.Choice)?.Text;
 
         return new PassengerReplyContext(
             state.CurrentStep?.Brief,
             state.CurrentStep?.Situation,
             attempt.Choice,
+            choiceText,
             attempt.Confidence,
             attempt.Transcript,
             lines,
@@ -54,7 +62,7 @@ public sealed record PassengerReplyContext(
         {
             nextStepBrief = NextStepBrief,
             nextStepSituation = NextStepSituation,
-            laya = new { choice = LayaChoice, confidence = LayaConfidence },
+            laya = new { choice = LayaChoice, choiceText = LayaChoiceText, confidence = LayaConfidence },
             conductorTranscript = ConductorTranscript,
             recentLines = RecentLines,
             flags = Flags,

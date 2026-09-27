@@ -77,6 +77,7 @@ public sealed class TripJournalRecord
     public string? VoiceAttemptId { get; set; }
     public string? VoicePassengerReply { get; set; }
     public string? VoiceReplyError { get; set; }
+    public DateTimeOffset? VoiceReplyStartedAt { get; set; }
 
     /// <summary>Итог События: success, failure или interrupted — Событие прервано Срывом рейса.</summary>
     public string? Result { get; set; }

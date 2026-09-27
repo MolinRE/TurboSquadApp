@@ -83,6 +83,7 @@ public sealed class FakeVoicePipeline : IVoicePipeline
 public sealed class FakeLlmClient : ILlmClient
 {
     public bool Fail { get; set; }
+    public bool Block { get; set; }
     public int Calls { get; private set; }
 
     public async IAsyncEnumerable<LlmToken> StreamAsync(
@@ -90,7 +91,7 @@ public sealed class FakeLlmClient : ILlmClient
     {
         Calls++;
         await Task.CompletedTask;
-        if (request.UserPrompt.Contains("\"choice\":\"c\"", StringComparison.Ordinal))
+        if (Block)
         {
             await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
             yield break;

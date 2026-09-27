@@ -217,8 +217,17 @@ public class TripApiTests(TripApiFactory factory) : IClassFixture<TripApiFactory
         var first = await trip.PostVoice("c", attemptId);
         Assert.Equal(HttpStatusCode.OK, first.StatusCode);
 
+        var fakeLlm = factory.Services.GetRequiredService<FakeLlmClient>();
+        fakeLlm.Block = true;
         using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => trip.StreamReply(attemptId, cancellation.Token));
+        try
+        {
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => trip.StreamReply(attemptId, cancellation.Token));
+        }
+        finally
+        {
+            fakeLlm.Block = false;
+        }
         await Task.Delay(100);
 
         var row = await factory.Database(db => db.TripJournal.SingleAsync(item => item.TripId == trip.Id && item.Kind == "voiceAttempt"));

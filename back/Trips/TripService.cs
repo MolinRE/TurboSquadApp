@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using TurboSquadApp.Content;
@@ -19,6 +20,7 @@ public sealed class TripService(
     public static readonly TimeSpan TimerTolerance = TimeSpan.FromSeconds(1);
 
     private static readonly JsonSerializerOptions SnapshotJson = JsonSerializerOptions.Web;
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> InMemoryReplyClaims = new();
 
     public async Task<IResult> StartAsync(Guid userId, string serviceClass, CancellationToken cancellationToken)
     {
@@ -89,6 +91,8 @@ public sealed class TripService(
         var (record, state) = trip;
         if (string.IsNullOrWhiteSpace(attemptId))
             return Results.UnprocessableEntity(new { reason = "AttemptIdRequired", message = "Нужен идентификатор голосовой попытки" });
+        if (attemptId.Length > 100)
+            return Results.UnprocessableEntity(new { reason = "AttemptIdInvalid", message = "Идентификатор голосовой попытки слишком длинный" });
         if (state.Journal.OfType<VoiceAttempt>().FirstOrDefault(attempt => attempt.AttemptId == attemptId) is { } existing)
             return Results.Ok(VoiceResponse(record, state, existing));
         if (state.Journal.OfType<VoiceAttempt>().Any(attempt => IsPending(attempt)))
@@ -214,6 +218,16 @@ public sealed class TripService(
         }
 
         var context = PassengerReplyContext.From(preview.State, attempt);
+        if (!await TryClaimReplyAsync(record.Id, attemptId))
+        {
+            await WriteSseAsync(response, "error", new
+            {
+                reason = "VoiceReplyPending",
+                message = "Реплика уже генерируется другим подключением"
+            }, cancellationToken);
+            return;
+        }
+
         var reply = new System.Text.StringBuilder();
         string? requestId = null;
         var committed = false;
@@ -298,6 +312,41 @@ public sealed class TripService(
         row.VoicePassengerReply = reply;
         row.VoiceReplyError = error;
         await dbContext.SaveChangesAsync(CancellationToken.None);
+    }
+
+    /// <summary>
+    /// Атомарно занимает генерацию реплики. PostgreSQL делает это условным UPDATE;
+    /// InMemory-провайдер тестов не поддерживает ExecuteUpdate, поэтому для него
+    /// используется локальный семафор с той же проверкой полей.
+    /// </summary>
+    private async Task<bool> TryClaimReplyAsync(Guid tripId, string attemptId)
+    {
+        var startedAt = clock.GetUtcNow();
+        if (dbContext.Database.ProviderName?.Contains("InMemory", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            var gate = InMemoryReplyClaims.GetOrAdd($"{tripId:N}:{attemptId}", _ => new SemaphoreSlim(1, 1));
+            await gate.WaitAsync(CancellationToken.None);
+            try
+            {
+                var row = await dbContext.TripJournal.SingleOrDefaultAsync(
+                    item => item.TripId == tripId && item.Kind == TripJournalKinds.VoiceAttempt && item.VoiceAttemptId == attemptId,
+                    CancellationToken.None);
+                if (row is null || row.VoicePassengerReply is not null || row.VoiceReplyError is not null || row.VoiceReplyStartedAt is not null)
+                    return false;
+                row.VoiceReplyStartedAt = startedAt;
+                await dbContext.SaveChangesAsync(CancellationToken.None);
+                return true;
+            }
+            finally
+            {
+                gate.Release();
+            }
+        }
+
+        return await dbContext.TripJournal
+            .Where(item => item.TripId == tripId && item.Kind == TripJournalKinds.VoiceAttempt && item.VoiceAttemptId == attemptId
+                && item.VoicePassengerReply == null && item.VoiceReplyError == null && item.VoiceReplyStartedAt == null)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(item => item.VoiceReplyStartedAt, startedAt), CancellationToken.None) == 1;
     }
 
     private static async Task WriteSseAsync(HttpResponse response, string eventName, object payload, CancellationToken cancellationToken)
