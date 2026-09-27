@@ -71,7 +71,8 @@ public sealed record PassengerReplyContext(
     }
 
     public LlmRequest ToLlmRequest() => new(
-        Role + "Сформулируй одну короткую естественную реплику на русском языке. " + Tone + Format,
+        Role + "В conductorTranscript — слова проводника. Ответь на них одной короткой естественной репликой " +
+        "на русском языке от лица пассажира: не повторяй и не пересказывай слова проводника. " + Tone + Format,
         JsonSerializer.Serialize(new
         {
             nextStepBrief = StepBrief,
