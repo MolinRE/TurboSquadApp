@@ -1,8 +1,10 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using TurboSquadApp.Content;
 using TurboSquadApp.Data;
 using TurboSquadApp.Events;
+using TurboSquadApp.Voice;
 
 namespace TurboSquadApp.Trips;
 
@@ -11,12 +13,14 @@ namespace TurboSquadApp.Trips;
 /// Состояние Рейса отдельно не хранится: движок детерминирован и заново проигрывает журнал на контенте,
 /// зафиксированном на старте, — справочники и настройка Рейса снимком, События ссылками на версии.
 /// </summary>
-public sealed class TripService(AppDbContext dbContext, TimeProvider clock)
+public sealed class TripService(
+    AppDbContext dbContext, TimeProvider clock, IVoicePipeline voicePipeline, ILlmClient llmClient, VoiceOptions voiceOptions)
 {
     /// <summary>Допуск на задержку сети: ответ позже таймера больше чем на него засчитывается как таймаут.</summary>
     public static readonly TimeSpan TimerTolerance = TimeSpan.FromSeconds(1);
 
     private static readonly JsonSerializerOptions SnapshotJson = JsonSerializerOptions.Web;
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> InMemoryReplyClaims = new();
 
     public async Task<IResult> StartAsync(Guid userId, string serviceClass, CancellationToken cancellationToken)
     {
@@ -58,9 +62,14 @@ public sealed class TripService(AppDbContext dbContext, TimeProvider clock)
         var (record, state) = trip;
         if (at is not null && state.Status == TripStatus.Running && state.Current != at)
             return Rejected("StaleStep", $"Ответ на Шаг {at.StepId} События {at.EventId}, а Рейс уже на другом Шаге");
+        if (action is ChooseVariant && state.CurrentStep?.AnswerType == "voice")
+            return Rejected("VoiceStepRequiresVoice", "Этот Шаг принимает только голосовой ответ");
 
         var now = clock.GetUtcNow();
         var expiresAt = ExpiresAt(record, state);
+        if (state.Journal.OfType<VoiceAttempt>().Any(IsPending) &&
+            (action is not TimeOut || now < expiresAt))
+            return Rejected("VoiceReplyPending", "Реплика пассажира ещё генерируется");
         if (action is ChooseVariant && now > expiresAt + TimerTolerance)
             action = new TimeOut();
         else if (action is TimeOut && now < expiresAt)
@@ -74,6 +83,198 @@ public sealed class TripService(AppDbContext dbContext, TimeProvider clock)
         return Results.Ok(View(record, result.State));
     }
 
+    public async Task<IResult> VoiceAsync(
+        Guid userId, Guid tripId, string eventId, string stepId, string attemptId, IFormFile audio,
+        CancellationToken cancellationToken)
+    {
+        if (await LoadAsync(userId, tripId, cancellationToken) is not { } trip) return Results.NotFound();
+        var (record, state) = trip;
+        if (string.IsNullOrWhiteSpace(attemptId))
+            return Results.UnprocessableEntity(new { reason = "AttemptIdRequired", message = "Нужен идентификатор голосовой попытки" });
+        if (attemptId.Length > 100)
+            return Results.UnprocessableEntity(new { reason = "AttemptIdInvalid", message = "Идентификатор голосовой попытки слишком длинный" });
+        if (state.Journal.OfType<VoiceAttempt>().FirstOrDefault(attempt => attempt.AttemptId == attemptId) is { } existing)
+            return Results.Ok(VoiceResponse(record, state, existing));
+        if (state.Journal.OfType<VoiceAttempt>().Any(attempt => IsPending(attempt)))
+            return Rejected("VoiceReplyPending", "Реплика предыдущей голосовой попытки ещё генерируется");
+        var position = new StepPosition(eventId, stepId);
+        if (state.Status != TripStatus.Running)
+            return Rejected("TripNotRunning", "Рейс не идёт: он не начат или уже закончился");
+        if (state.Current != position)
+            return Rejected("StaleStep", $"Ответ на Шаг {stepId} События {eventId}, а Рейс уже на другом Шаге");
+        if (state.CurrentStep?.AnswerType != "voice")
+            return Rejected("NotVoiceStep", "Текущий Шаг не принимает голосовой ответ");
+        if (audio.Length <= 0)
+            return Rejected("EmptyAudio", "Аудиофайл пустой");
+        if (audio.Length > voiceOptions.MaxAudioBytes)
+            return Rejected("AudioTooLarge", $"Аудиофайл больше допустимого размера {voiceOptions.MaxAudioBytes} байт");
+
+        var currentEvent = state.CurrentEvent!;
+        var currentStep = state.CurrentStep!;
+        var questions = currentStep.Variants!
+            .Where(variant => state.Choices.Single(choice => choice.Variant.Id == variant.Id).Available)
+            .Select(variant => new VoiceQuestion(variant.Id, variant.Text))
+            .ToList();
+        VoicePipelineResult pipeline;
+        await using (var stream = audio.OpenReadStream())
+        {
+            pipeline = await voicePipeline.ProcessAsync(
+                new VoicePipelineRequest(
+                    currentEvent.Id, currentEvent.Version, currentStep.Id, currentStep.Situation,
+                    currentStep.Brief, questions),
+                stream, audio.FileName, audio.ContentType, cancellationToken);
+        }
+
+        var attempt = new VoiceAttempt(
+            currentEvent.Id, currentEvent.Version, currentStep.Id, pipeline.Transcript, pipeline.Choice,
+            pipeline.Confidence, pipeline.LatencyMs, false, pipeline.ErrorCode, pipeline.ProviderRequestId, attemptId);
+        var attemptResult = TripEngine.Reduce(state, new RecordVoiceAttempt(attempt));
+        if (attemptResult.Rejection is { } rejection)
+            return Rejected(rejection.Reason.ToString(), rejection.Message);
+
+        var afterAttempt = attemptResult.State;
+        var now = clock.GetUtcNow();
+        var expiresAt = ExpiresAt(record, state);
+        if (expiresAt is { } expires && now > expires + TimerTolerance)
+        {
+            var timedOutAttempt = attempt with { ErrorCode = "VoiceDeadlineExceeded" };
+            var timedOutState = TripEngine.Reduce(state, new RecordVoiceAttempt(timedOutAttempt)).State;
+            var timeoutResult = TripEngine.Reduce(timedOutState, new TimeOut());
+            AppendToJournal(record, state, timeoutResult.State, now);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return Results.Ok(View(record, timeoutResult.State, VoiceView(timedOutAttempt)));
+        }
+
+        if (!pipeline.Applied || pipeline.Choice is null)
+        {
+            AppendToJournal(record, state, afterAttempt, now);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return Results.UnprocessableEntity(new
+            {
+                reason = pipeline.ErrorCode ?? "VoiceAttemptFailed",
+                message = pipeline.ErrorMessage ?? "Голосовая попытка не прошла",
+                attempt = VoiceView(attempt),
+                trip = View(record, afterAttempt)
+            });
+        }
+
+        var result = TripEngine.Reduce(afterAttempt, new ChooseVariant(pipeline.Choice));
+        if (result.Rejection is { } variantRejection)
+        {
+            var rejectedAttempt = attempt with { ErrorCode = variantRejection.Reason.ToString() };
+            var rejectedState = TripEngine.Reduce(state, new RecordVoiceAttempt(rejectedAttempt)).State;
+            AppendToJournal(record, state, rejectedState, now);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return Rejected(variantRejection.Reason.ToString(), variantRejection.Message);
+        }
+
+        AppendToJournal(record, state, afterAttempt, now);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return Results.Ok(TripView.Of(record.Id, result.State, null, VoiceView(attempt, pending: true)));
+    }
+
+    public async Task StreamVoiceReplyAsync(
+        Guid userId, Guid tripId, string attemptId, HttpResponse response, CancellationToken cancellationToken)
+    {
+        if (await LoadAsync(userId, tripId, cancellationToken) is not { } trip)
+        {
+            response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+
+        var (record, state) = trip;
+        var attempt = state.Journal.OfType<VoiceAttempt>().FirstOrDefault(item => item.AttemptId == attemptId);
+        if (attempt is null)
+        {
+            response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+
+        response.ContentType = "text/event-stream";
+        response.Headers.CacheControl = "no-cache";
+        response.Headers.Connection = "keep-alive";
+        if (attempt.ReplyError is not null)
+        {
+            await WriteSseAsync(response, "error", new { reason = attempt.ReplyError, message = "Реплика пассажира не сгенерирована", trip = View(record, state, VoiceView(attempt)) }, cancellationToken);
+            return;
+        }
+        if (attempt.PassengerReply is not null && attempt.Applied)
+        {
+            await WriteSseAsync(response, "done", new { reply = attempt.PassengerReply, trip = View(record, state, VoiceView(attempt)) }, cancellationToken);
+            return;
+        }
+        if (!IsPending(attempt))
+        {
+            await WriteSseAsync(response, "error", new { reason = attempt.ErrorCode ?? "VoiceAttemptFailed", message = "Голосовая попытка не применена", trip = View(record, state, VoiceView(attempt)) }, cancellationToken);
+            return;
+        }
+
+        var preview = TripEngine.Reduce(state, new ChooseVariant(attempt.Choice!));
+        if (preview.Rejection is { } previewError)
+        {
+            await SaveReplyAsync(record.Id, attemptId, null, previewError.Reason.ToString());
+            await WriteSseAsync(response, "error", new { reason = previewError.Reason.ToString(), message = previewError.Message, trip = View(record, state, VoiceView(attempt)) }, cancellationToken);
+            return;
+        }
+
+        var context = PassengerReplyContext.From(preview.State, attempt);
+        if (!await TryClaimReplyAsync(record.Id, attemptId))
+        {
+            await WriteSseAsync(response, "error", new
+            {
+                reason = "VoiceReplyPending",
+                message = "Реплика уже генерируется другим подключением"
+            }, cancellationToken);
+            return;
+        }
+
+        var reply = new System.Text.StringBuilder();
+        string? requestId = null;
+        var committed = false;
+        try
+        {
+            await WriteSseAsync(response, "started", new { attemptId }, cancellationToken);
+            await foreach (var token in llmClient.StreamAsync(context.ToLlmRequest(), cancellationToken))
+            {
+                requestId ??= token.RequestId;
+                reply.Append(token.Text);
+                await WriteSseAsync(response, "token", new { text = token.Text }, cancellationToken);
+            }
+
+            var deadline = ExpiresAt(record, state);
+            if (deadline is { } expires && clock.GetUtcNow() > expires + TimerTolerance)
+            {
+                await SaveReplyAsync(record.Id, attemptId, null, "VoiceDeadlineExceeded");
+                await WriteSseAsync(response, "error", new { reason = "VoiceDeadlineExceeded", message = "Время голосового Шага истекло до завершения реплики" }, CancellationToken.None);
+                return;
+            }
+
+            var row = await dbContext.TripJournal.SingleAsync(
+                item => item.TripId == record.Id && item.Kind == TripJournalKinds.VoiceAttempt && item.VoiceAttemptId == attemptId,
+                CancellationToken.None);
+            row.VoiceApplied = true;
+            row.VoicePassengerReply = reply.ToString();
+            AppendToJournal(record, state, preview.State, clock.GetUtcNow());
+            await dbContext.SaveChangesAsync(CancellationToken.None);
+            committed = true;
+            var appliedAttempt = attempt with { Applied = true, PassengerReply = reply.ToString() };
+            await WriteSseAsync(response, "done", new { reply = reply.ToString(), requestId, trip = View(record, preview.State, VoiceView(appliedAttempt)) }, cancellationToken);
+        }
+        catch (LlmProviderException ex)
+        {
+            await SaveReplyAsync(record.Id, attemptId, null, ex.Code);
+            await WriteSseAsync(response, "error", new { reason = ex.Code, message = ex.Message, trip = View(record, state, VoiceView(attempt with { ReplyError = ex.Code })) }, CancellationToken.None);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            if (!committed) await SaveReplyAsync(record.Id, attemptId, null, "LlmClientDisconnected");
+        }
+        catch (IOException)
+        {
+            if (!committed) await SaveReplyAsync(record.Id, attemptId, null, "LlmClientDisconnected");
+        }
+    }
+
     public async Task<IResult> DebriefAsync(Guid userId, Guid tripId, CancellationToken cancellationToken)
     {
         if (await LoadAsync(userId, tripId, cancellationToken) is not { } trip) return Results.NotFound();
@@ -82,7 +283,78 @@ public sealed class TripService(AppDbContext dbContext, TimeProvider clock)
             : Rejected("TripNotFinished", "Разбор строится после Рейса: Рейс ещё не закончен");
     }
 
-    private static TripView View(TripRecord record, TripState state) => TripView.Of(record.Id, state, ExpiresAt(record, state));
+    private static TripView View(TripRecord record, TripState state, VoiceAttemptView? voiceAttempt = null) =>
+        TripView.Of(record.Id, state, ExpiresAt(record, state), voiceAttempt);
+
+    private static VoiceAttemptView VoiceView(VoiceAttempt attempt, bool pending = false) => new(
+        attempt.Transcript, attempt.Choice, attempt.Confidence, attempt.LatencyMs,
+        attempt.Applied, attempt.ErrorCode, attempt.ProviderRequestId, attempt.AttemptId,
+        attempt.PassengerReply, attempt.ReplyError, pending);
+
+    private static bool IsPending(VoiceAttempt attempt) =>
+        !attempt.Applied && attempt.Choice is not null && attempt.ErrorCode is null && attempt.ReplyError is null;
+
+    private static TripView VoiceResponse(TripRecord record, TripState state, VoiceAttempt attempt)
+    {
+        if (!IsPending(attempt)) return View(record, state, VoiceView(attempt));
+        var preview = TripEngine.Reduce(state, new ChooseVariant(attempt.Choice!));
+        return preview.Rejection is null
+            ? TripView.Of(record.Id, preview.State, null, VoiceView(attempt, pending: true))
+            : View(record, state, VoiceView(attempt));
+    }
+
+    private async Task SaveReplyAsync(Guid tripId, string attemptId, string? reply, string? error)
+    {
+        var row = await dbContext.TripJournal.SingleOrDefaultAsync(
+            item => item.TripId == tripId && item.Kind == TripJournalKinds.VoiceAttempt && item.VoiceAttemptId == attemptId,
+            CancellationToken.None);
+        if (row is null) return;
+        row.VoicePassengerReply = reply;
+        row.VoiceReplyError = error;
+        await dbContext.SaveChangesAsync(CancellationToken.None);
+    }
+
+    /// <summary>
+    /// Атомарно занимает генерацию реплики. PostgreSQL делает это условным UPDATE;
+    /// InMemory-провайдер тестов не поддерживает ExecuteUpdate, поэтому для него
+    /// используется локальный семафор с той же проверкой полей.
+    /// </summary>
+    private async Task<bool> TryClaimReplyAsync(Guid tripId, string attemptId)
+    {
+        var startedAt = clock.GetUtcNow();
+        if (dbContext.Database.ProviderName?.Contains("InMemory", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            var gate = InMemoryReplyClaims.GetOrAdd($"{tripId:N}:{attemptId}", _ => new SemaphoreSlim(1, 1));
+            await gate.WaitAsync(CancellationToken.None);
+            try
+            {
+                var row = await dbContext.TripJournal.SingleOrDefaultAsync(
+                    item => item.TripId == tripId && item.Kind == TripJournalKinds.VoiceAttempt && item.VoiceAttemptId == attemptId,
+                    CancellationToken.None);
+                if (row is null || row.VoicePassengerReply is not null || row.VoiceReplyError is not null || row.VoiceReplyStartedAt is not null)
+                    return false;
+                row.VoiceReplyStartedAt = startedAt;
+                await dbContext.SaveChangesAsync(CancellationToken.None);
+                return true;
+            }
+            finally
+            {
+                gate.Release();
+            }
+        }
+
+        return await dbContext.TripJournal
+            .Where(item => item.TripId == tripId && item.Kind == TripJournalKinds.VoiceAttempt && item.VoiceAttemptId == attemptId
+                && item.VoicePassengerReply == null && item.VoiceReplyError == null && item.VoiceReplyStartedAt == null)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(item => item.VoiceReplyStartedAt, startedAt), CancellationToken.None) == 1;
+    }
+
+    private static async Task WriteSseAsync(HttpResponse response, string eventName, object payload, CancellationToken cancellationToken)
+    {
+        var json = JsonSerializer.Serialize(payload, JsonSerializerOptions.Web);
+        await response.WriteAsync($"event: {eventName}\ndata: {json}\n\n", cancellationToken);
+        await response.Body.FlushAsync(cancellationToken);
+    }
 
     /// <summary>Таймер Шага идёт с момента, когда Шаг показан; у Шага без таймера — null.</summary>
     private static DateTimeOffset? ExpiresAt(TripRecord record, TripState state) =>
@@ -118,6 +390,14 @@ public sealed class TripService(AppDbContext dbContext, TimeProvider clock)
         var state = Expect(TripEngine.Reduce(TripState.Initial, new StartTrip(content, serviceClass)));
         foreach (var row in journal)
         {
+            if (row.Kind == TripJournalKinds.VoiceAttempt)
+            {
+                state = Expect(TripEngine.Reduce(state, new RecordVoiceAttempt(new VoiceAttempt(
+                    row.EventId!, row.EventVersion!.Value, row.StepId!, row.VoiceTranscript, row.VoiceChoice,
+                    row.VoiceConfidence, row.VoiceLatencyMs ?? 0, row.VoiceApplied, row.VoiceError, row.VoiceRequestId,
+                    row.VoiceAttemptId ?? $"legacy:{row.Seq}", row.VoicePassengerReply, row.VoiceReplyError))));
+                continue;
+            }
             TripAction? action = row.Kind switch
             {
                 TripJournalKinds.ProactiveChoice => new ChooseProactive(row.OptionId!),
@@ -147,8 +427,9 @@ public sealed class TripService(AppDbContext dbContext, TimeProvider clock)
         record.Status = Code(after.Status);
         record.FailureCause = after.Failure is { } failure ? Code(failure.Cause) : null;
         record.FailureScale = after.Failure?.Scale;
-        record.FinishedAt = after.IsFinished ? now : null;
-        record.StepStartedAt = now;
+        record.FinishedAt = after.IsFinished ? now : record.FinishedAt;
+        if (before.Current != after.Current || before.Phase != after.Phase || before.Status != after.Status)
+            record.StepStartedAt = now;
     }
 
     private static TripJournalRecord JournalRow(Guid tripId, int seq, JournalEntry entry, int elapsedMs, DateTimeOffset now) => entry switch
@@ -166,6 +447,17 @@ public sealed class TripService(AppDbContext dbContext, TimeProvider clock)
             ScaleChanges = JsonSerializer.Serialize(decision.Changes, SnapshotJson),
             FlagsSet = JsonSerializer.Serialize(decision.FlagsSet, SnapshotJson),
             CriticalError = decision.CriticalError, ToStepId = decision.To,
+        },
+        VoiceAttempt attempt => new()
+        {
+            TripId = tripId, Seq = seq, CreatedAt = now, Kind = TripJournalKinds.VoiceAttempt,
+            EventId = attempt.EventId, EventVersion = attempt.EventVersion, StepId = attempt.StepId,
+            VoiceTranscript = attempt.Transcript, VoiceChoice = attempt.Choice,
+            VoiceConfidence = attempt.Confidence, VoiceLatencyMs = attempt.LatencyMs,
+            VoiceApplied = attempt.Applied, VoiceError = attempt.ErrorCode,
+            VoiceRequestId = attempt.ProviderRequestId, VoiceAttemptId = attempt.AttemptId,
+            VoicePassengerReply = attempt.PassengerReply, VoiceReplyError = attempt.ReplyError,
+            ElapsedMs = elapsedMs,
         },
         EventFinished finished => new()
         {

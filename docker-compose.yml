@@ -1,0 +1,49 @@
+# Public local-demo defaults allow docker compose up from a clean clone.
+# Set private values in .env before using this stack beyond your machine.
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: turbosquad
+      POSTGRES_USER: ${POSTGRES_USER:-turbosquad}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local_demo_postgres_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: ./back
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_HTTP_PORTS: "8080"
+      ConnectionStrings__Postgres: Host=db;Port=5432;Database=turbosquad
+      POSTGRES_USER: ${POSTGRES_USER:-turbosquad}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local_demo_postgres_password}
+      Jwt__Key: ${Jwt__Key:-local_demo_jwt_key_replace_with_random_32_chars}
+      POLZA_API_KEY: ${POLZA_API_KEY:-}
+      LAYA_API_TOKEN: ${LAYA_API_TOKEN:-}
+      Database__MigrateOnStartup: "true"
+      ContentSeed__SeedOnStartup: "true"
+      DemoAccounts__SeedOnStartup: ${DEMO_ACCOUNTS_SEED:-true}
+      DemoAccounts__conductor-star__Password: ${DEMO_CONDUCTOR_STAR_PASSWORD:-local_demo_star_password}
+      DemoAccounts__conductor-novice__Password: ${DEMO_CONDUCTOR_NOVICE_PASSWORD:-local_demo_novice_password}
+      DemoAccounts__manager-methodologist__Password: ${DEMO_MANAGER_METHODOLOGIST_PASSWORD:-local_demo_manager_password}
+    ports:
+      - "127.0.0.1:5017:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  front:
+    build: ./front
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:

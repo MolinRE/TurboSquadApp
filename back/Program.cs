@@ -16,6 +16,7 @@ using Microsoft.AspNetCore.Identity;
 using TurboSquadApp.Events;
 using TurboSquadApp.Content;
 using TurboSquadApp.Trips;
+using TurboSquadApp.Voice;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -48,12 +49,33 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 builder.Services.AddAuthorization();
+builder.Services.AddCors(options => options.AddPolicy("Frontend", policy => policy
+    .WithOrigins("http://localhost:3000", "https://localhost:3000")
+    .AllowAnyHeader()
+    .AllowAnyMethod()));
 builder.Services.AddScoped<DatabaseSession>();
 builder.Services.AddScoped<RegistrationService>();
 builder.Services.AddScoped<LoginService>();
 builder.Services.AddScoped<DemoAccountSeeder>();
 builder.Services.AddScoped<ContentSeeder>();
 builder.Services.AddScoped<TripService>();
+var voiceOptions = VoiceOptions.FromConfiguration(builder.Configuration);
+builder.Services.AddSingleton(voiceOptions);
+builder.Services.AddHttpClient<PolzaSttClient>(client =>
+{
+    client.BaseAddress = new Uri(voiceOptions.PolzaBaseUrl.TrimEnd('/') + "/");
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
+builder.Services.AddHttpClient<LayaClient>(client => client.Timeout = TimeSpan.FromSeconds(30));
+builder.Services.AddHttpClient<PolzaLlmClient>(client =>
+{
+    client.BaseAddress = new Uri(voiceOptions.PolzaBaseUrl.TrimEnd('/') + "/");
+    client.Timeout = Timeout.InfiniteTimeSpan;
+});
+builder.Services.AddScoped<IVoicePipeline, VoicePipelineService>();
+builder.Services.AddScoped<ISttClient>(sp => sp.GetRequiredService<PolzaSttClient>());
+builder.Services.AddScoped<ILayaClient>(sp => sp.GetRequiredService<LayaClient>());
+builder.Services.AddScoped<ILlmClient>(sp => sp.GetRequiredService<PolzaLlmClient>());
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<IPasswordHasher<AppUser>, PasswordHasher<AppUser>>();
 
@@ -70,8 +92,16 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseCors("Frontend");
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Compose applies committed EF Core migrations before startup seeders use the tables.
+if (app.Configuration.GetValue("Database:MigrateOnStartup", false))
+{
+    await using var scope = app.Services.CreateAsyncScope();
+    await scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.MigrateAsync();
+}
 
 // Стартовый контент Рейса (справочники, Заступ, №6, №33): добавляется только недостающее.
 if (app.Configuration.GetValue("ContentSeed:SeedOnStartup", true))

@@ -6,7 +6,9 @@ namespace TurboSquadApp.Trips;
 /// Разбор, слой А (PRD v7 §8): факты Рейса по порядку, без ИИ. Строится из журнала и контента,
 /// зафиксированного на старте Рейса, поэтому тексты — той версии События, которую реально играли.
 /// </summary>
-public sealed record Debrief(TripStatus Result, string Summary, IReadOnlyList<DebriefItem> Items)
+public sealed record Debrief(
+    TripStatus Result, string Summary, IReadOnlyList<DebriefItem> Items,
+    IReadOnlyList<DebriefVoiceAttempt> VoiceAttempts)
 {
     [JsonIgnore]
     public IEnumerable<DebriefEvent> Events => Items.OfType<DebriefEvent>();
@@ -38,7 +40,13 @@ public sealed record Debrief(TripStatus Result, string Summary, IReadOnlyList<De
                     break;
             }
         }
-        return new Debrief(state.Status, SummaryOf(state), items);
+        var voiceAttempts = state.Journal.OfType<VoiceAttempt>()
+            .Select(attempt => new DebriefVoiceAttempt(
+                attempt.EventId, attempt.EventVersion, attempt.StepId, attempt.Transcript, attempt.Choice,
+                attempt.Confidence, attempt.LatencyMs, attempt.Applied, attempt.ErrorCode,
+                attempt.ProviderRequestId, attempt.AttemptId, attempt.PassengerReply, attempt.ReplyError))
+            .ToList();
+        return new Debrief(state.Status, SummaryOf(state), items, voiceAttempts);
     }
 
     /// <summary>Итог Рейса одной фразой.</summary>
@@ -90,3 +98,8 @@ public sealed record DebriefDecision(
 
 /// <summary>Изменение Шкалы: по контенту (Nominal) и фактически после обрезки по диапазону (Applied).</summary>
 public sealed record DebriefScaleChange(string Scale, string Name, int Nominal, int Applied, int Before, int After);
+
+public sealed record DebriefVoiceAttempt(
+    string EventId, int EventVersion, string StepId, string? Transcript, string? Choice,
+    double? Confidence, int LatencyMs, bool Applied, string? ErrorCode, string? ProviderRequestId,
+    string AttemptId, string? PassengerReply, string? ReplyError);

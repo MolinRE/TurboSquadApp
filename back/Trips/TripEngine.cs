@@ -31,6 +31,12 @@ public enum RejectionReason
 
     /// <summary>Вариант скрыт от проводника Условием: сервер перепроверяет выбор.</summary>
     HiddenVariant,
+
+    /// <summary>Голосовая попытка пришла не на текущий голосовой Шаг.</summary>
+    StaleVoiceStep,
+
+    /// <summary>Текущий Шаг не принимает голосовой ответ.</summary>
+    NotVoiceStep,
 }
 
 /// <summary>Почему действие отклонено: код для программы, текст для человека.</summary>
@@ -54,6 +60,7 @@ public static class TripEngine
         return action switch
         {
             ChooseProactive choose => Proactive(state, choose.OptionId),
+            RecordVoiceAttempt record => RecordVoice(state, record.Attempt),
             ChooseVariant choose => Choose(state, choose.VariantId),
             TimeOut => state.CurrentStep is { TimerSec: not null } step
                 ? Accept(React(state, step.Timeout!, timedOut: true))
@@ -71,6 +78,17 @@ public static class TripEngine
             return Reject(state, RejectionReason.HiddenVariant,
                 $"Вариант «{variantId}» скрыт от проводника, не выполнено Условие: {string.Join("; ", choice.HiddenBecause)}");
         return Accept(React(state, choice.Variant, timedOut: false));
+    }
+
+    private static TripResult RecordVoice(TripState state, VoiceAttempt attempt)
+    {
+        if (state.Current is not { } current || current.EventId != attempt.EventId || current.StepId != attempt.StepId)
+            return Reject(state, RejectionReason.StaleVoiceStep, "Голосовой ответ относится не к текущему Шагу");
+        if (state.CurrentStep?.AnswerType != "voice")
+            return Reject(state, RejectionReason.NotVoiceStep, "Текущий Шаг не принимает голосовой ответ");
+        if (attempt.EventVersion != state.CurrentEvent!.Version)
+            return Reject(state, RejectionReason.StaleVoiceStep, "Версия События голосового ответа устарела");
+        return Accept(state with { Journal = state.Journal.Add(attempt) });
     }
 
     private static TripResult Accept(TripState state) => new(state, null);

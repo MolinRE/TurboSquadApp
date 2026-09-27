@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using TurboSquadApp.Data;
@@ -11,9 +12,11 @@ using TurboSquadApp.Data;
 namespace TurboSquadApp.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260926222027_AddVoiceAttempts")]
+    partial class AddVoiceAttempts
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -373,11 +376,6 @@ namespace TurboSquadApp.Data.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("voice_applied");
 
-                    b.Property<string>("VoiceAttemptId")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("voice_attempt_id");
-
                     b.Property<string>("VoiceChoice")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)")
@@ -396,19 +394,6 @@ namespace TurboSquadApp.Data.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("voice_latency_ms");
 
-                    b.Property<string>("VoicePassengerReply")
-                        .HasColumnType("text")
-                        .HasColumnName("voice_passenger_reply");
-
-                    b.Property<string>("VoiceReplyError")
-                        .HasMaxLength(80)
-                        .HasColumnType("character varying(80)")
-                        .HasColumnName("voice_reply_error");
-
-                    b.Property<DateTimeOffset?>("VoiceReplyStartedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("voice_reply_started_at");
-
                     b.Property<string>("VoiceRequestId")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)")
@@ -420,11 +405,6 @@ namespace TurboSquadApp.Data.Migrations
 
                     b.HasKey("TripId", "Seq")
                         .HasName("pk_trip_journal");
-
-                    b.HasIndex("TripId", "VoiceAttemptId")
-                        .IsUnique()
-                        .HasDatabaseName("ix_trip_journal_trip_id_voice_attempt_id")
-                        .HasFilter("\"kind\" = 'voiceAttempt'");
 
                     b.ToTable("trip_journal", (string)null);
                 });

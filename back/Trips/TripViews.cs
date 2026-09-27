@@ -3,10 +3,10 @@ namespace TurboSquadApp.Trips;
 /// <summary>Состояние Рейса для клиента: Шкалы, Флаги, текущий Шаг или Проактивный выбор, итог.</summary>
 public sealed record TripView(
     Guid Id, TripStatus Status, string ServiceClass, IReadOnlyList<ScaleView> Scales, IReadOnlyList<string> Flags,
-    StepView? Step, ProactiveChoiceView? ProactiveChoice, TripEndView? Result)
+    StepView? Step, ProactiveChoiceView? ProactiveChoice, TripEndView? Result, VoiceAttemptView? VoiceAttempt)
 {
     /// <param name="expiresAt">Когда истекает таймер текущего Шага — его считает сервер.</param>
-    public static TripView Of(Guid id, TripState state, DateTimeOffset? expiresAt)
+    public static TripView Of(Guid id, TripState state, DateTimeOffset? expiresAt, VoiceAttemptView? voiceAttempt = null)
     {
         var content = state.Content!;
         var scales = content.Directory.Scales
@@ -19,7 +19,9 @@ public sealed record TripView(
             var ev = state.CurrentEvent!;
             step = new StepView(
                 ev.Id, ev.Title, current.Id, current.Situation, current.AnswerType ?? "", current.TimerSec, expiresAt,
-                state.Choices.Where(c => c.Available).Select(c => new VariantView(c.Variant.Id, c.Variant.Text)).ToList());
+                current.AnswerType == "voice"
+                    ? []
+                    : state.Choices.Where(c => c.Available).Select(c => new VariantView(c.Variant.Id, c.Variant.Text)).ToList());
         }
 
         var proactive = state.Phase == TripPhase.ProactiveChoice
@@ -32,7 +34,7 @@ public sealed record TripView(
             ? new TripEndView(state.Status, Debrief.SummaryOf(state))
             : null;
 
-        return new TripView(id, state.Status, state.ServiceClass!, scales, state.Flags.Order().ToList(), step, proactive, result);
+        return new TripView(id, state.Status, state.ServiceClass!, scales, state.Flags.Order().ToList(), step, proactive, result, voiceAttempt);
     }
 }
 
@@ -51,3 +53,8 @@ public sealed record ProactiveOptionView(string Id, string Text);
 
 /// <summary>Итог Рейса: Прибытие или Срыв и итог одной фразой.</summary>
 public sealed record TripEndView(TripStatus Status, string Summary);
+
+public sealed record VoiceAttemptView(
+    string? Transcript, string? Choice, double? Confidence, int LatencyMs,
+    bool Applied, string? ErrorCode, string? ProviderRequestId, string AttemptId,
+    string? PassengerReply = null, string? ReplyError = null, bool Pending = false);
