@@ -1,21 +1,24 @@
 "use client";
 
-import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
+import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { ArrowLeft, ArrowRight, ArrowUp, Hand, Zap } from "lucide-react";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
 import { Countdown } from "@/components/game/countdown";
 import { ScalesPanel } from "@/components/game/scale-meter";
 import { Stopwatch } from "@/components/game/stopwatch";
+import { ApiError } from "@/lib/api";
 import { swipesApi } from "@/lib/swipes/api";
 import type {
   AnswerOutcome,
   CycleInfo,
   ShiftCard,
   ShiftMode,
+  ShiftRejection,
   ShiftState,
   SwipeAnswer,
 } from "@/lib/swipes/contract";
+import { forgetShift, noSubscription, saveShift, savedShift } from "@/lib/swipes/saved-shift";
 import { DeckProgress } from "./deck-progress";
 import { ExplanationText, SourceLine, VerdictLabel } from "./explanation";
 import { formatSeconds } from "./format";
@@ -29,11 +32,20 @@ const CORRECT_PAUSE_MS = 2500;
 const GESTURE_HINT_KEY = "turbo-brigada:swipes:gesture-hint-seen";
 /** Меньше этой высоты фон-подсказка не помещается целиком и не показывается. */
 const HINT_MIN_HEIGHT = 128;
+/**
+ * Отказы 409, после которых ответ уже засчитан или Смена ушла дальше: например, первый ответ
+ * дошёл до сервера, а его результат потерялся в сети. Экран берёт состояние с сервера.
+ */
+const SETTLED_REJECTIONS: ShiftRejection[] = ["StaleCard", "CardNotShown", "ShiftNotRunning"];
+const LOADING_DECK = "Собираем колоду…";
+const RESUMING = "Возвращаемся к Смене…";
 
 type Phase =
+  /** Открыли экран: продолжаем незаконченную Смену этого браузера, если она есть, иначе выбор Режима. */
+  | { kind: "restoring" }
   | { kind: "choosing" }
-  | { kind: "loading" }
-  | { kind: "loadFailed"; message: string }
+  | { kind: "loading"; label: string }
+  | { kind: "loadFailed"; message: string; retry: () => void }
   /** Карточка на экране: печатается или ждёт ответа. */
   | { kind: "playing" }
   | { kind: "sending"; exitTo: SwipeAnswer }
@@ -43,6 +55,12 @@ type Phase =
   | { kind: "finished" };
 
 type LastAnswer = { card: ShiftCard; outcome: AnswerOutcome };
+
+/** Ответ на карточку; «Время вышло» — отдельная операция, засчитывается как «Не знаю». */
+type CardAnswer = SwipeAnswer | "timeOut";
+
+/** Ошибка действия; resend — ответ, который не дошёл до сервера: кнопка отправляет его ещё раз. */
+type ActionError = { message: string; resend: CardAnswer | null };
 
 /** Отметки performance.now(): отсчёт идёт от конца печати формулировки до ответа. */
 type Timing = { startedAt: number | null; stoppedAt: number | null };
@@ -59,8 +77,23 @@ function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Текст ошибки из единого формата ошибок API; fetch без ответа сервера — нет связи. */
 function messageOf(error: unknown) {
-  return error instanceof Error ? error.message : "Что-то пошло не так";
+  if (!(error instanceof ApiError)) return "Не удалось связаться с сервером";
+  return error.status === 403 ? "Смену на свайпах проходит Проводник — войдите его демо-аккаунтом" : error.message;
+}
+
+function alreadySettled(error: unknown) {
+  return (
+    error instanceof ApiError &&
+    error.status === 409 &&
+    SETTLED_REJECTIONS.some((reason) => reason === error.payload?.reason)
+  );
+}
+
+/** Смены нет или она чужая: например, в этом браузере потом входил другой проводник. */
+function shiftGone(error: unknown) {
+  return error instanceof ApiError && error.status === 404;
 }
 
 /** Показ жеста — один раз на браузер; если хранилище недоступно, не показываем. */
@@ -80,27 +113,45 @@ function skipsPause(shift: ShiftState, outcome: AnswerOutcome) {
 }
 
 /**
- * Смена на свайпах. Правила и время считает сервер (сейчас подменный модуль), экран показывает.
- * Сначала выбор Режима. Формулировка печатается, затем появляются варианты и идёт секундомер
- * или, в Циклах, обратный отсчёт. После ответа — Пояснение: после ошибки, «Не знаю» и
- * «Время вышло» — по «Понятно», после верного — через паузу (в Циклах 2–3 без неё).
- * Ошибку «В своём темпе» сервер возвращает Повтором; в итоге — «Что повторить» и Работа
- * над ошибками. Свайп работает в любой части экрана.
+ * Смена на свайпах через API: правила и время считает сервер, экран показывает.
+ * Сначала выбор Режима, а незаконченную Смену экран продолжает и после перезагрузки.
+ * Формулировка печатается, затем появляются варианты и идёт секундомер или, в Циклах,
+ * обратный отсчёт. Карточка улетает сразу после свайпа, вердикт приходит с ответом сервера;
+ * не дошёл ответ — карточка возвращается, и его можно отправить ещё раз. После ответа —
+ * Пояснение: после ошибки, «Не знаю» и «Время вышло» — по «Понятно», после верного — через
+ * паузу (в Циклах 2–3 без неё). Ошибку «В своём темпе» сервер возвращает Повтором; в итоге —
+ * «Что повторить» и Работа над ошибками. Свайп работает в любой части экрана.
  */
 export function SwipeShift() {
   const [shift, setShift] = useState<ShiftState | null>(null);
-  const [phase, setPhase] = useState<Phase>({ kind: "choosing" });
+  const [phase, setPhase] = useState<Phase>({ kind: "restoring" });
   const [last, setLast] = useState<LastAnswer | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<ActionError | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [timing, setTiming] = useState<Timing>(notStarted);
   /** Номер показа карточки: одна и та же карточка при Повторе — новый показ. */
   const [turn, setTurn] = useState(0);
+  /** Ответ в пути: второй свайп или нажатие до смены фазы не отправляет второй ответ. */
+  const sending = useRef(false);
+  /** Сохранённая незаконченная Смена; undefined — пока неизвестно (отрисовка на сервере). */
+  const saved = useSyncExternalStore(noSubscription, savedShift, () => undefined);
 
   const ready = timing.startedAt !== null;
   const { drag, handlers, playDemo } = useSwipeDrag({
     enabled: phase.kind === "playing" && ready,
     onAnswer: answerCard,
   });
+
+  function clearMessages() {
+    setActionError(null);
+    setNotice(null);
+  }
+
+  function showLoading(label: string) {
+    setPhase({ kind: "loading", label });
+    setLast(null);
+    clearMessages();
+  }
 
   function showCard(state: ShiftState) {
     setShift(state);
@@ -109,12 +160,70 @@ export function SwipeShift() {
     setPhase({ kind: "playing" });
   }
 
-  function load(request: () => Promise<ShiftState>) {
-    setPhase({ kind: "loading" });
-    setLast(null);
-    setActionError(null);
-    request().then(showCard, (error) => setPhase({ kind: "loadFailed", message: messageOf(error) }));
+  function finish(state: ShiftState) {
+    forgetShift();
+    setShift(state);
+    setPhase({ kind: "finished" });
   }
+
+  /** Новая Смена: старт, следующий Цикл или Работа над ошибками. */
+  function load(request: () => Promise<ShiftState>) {
+    showLoading(LOADING_DECK);
+    request().then(
+      (state) => {
+        saveShift(state.shiftId);
+        showCard(state);
+      },
+      (error) =>
+        setPhase({
+          kind: "loadFailed",
+          message: `Не удалось начать Смену: ${messageOf(error)}`,
+          retry: () => load(request),
+        }),
+    );
+  }
+
+  /** Экран загрузки и состояние Смены с сервера, например когда ответ уже засчитан. */
+  function resync(shiftId: string, note: string | null) {
+    showLoading(RESUMING);
+    continueShift(shiftId, note);
+  }
+
+  /**
+   * Продолжает Смену по состоянию с сервера, не трогая экран до ответа. Если ответ дан, а
+   * следующую карточку не просили, просит её: Пояснение к тому ответу уже не показать.
+   */
+  function continueShift(shiftId: string, note: string | null) {
+    swipesApi
+      .getShift(shiftId)
+      .then((state) => (state.status === "running" && !state.card ? swipesApi.showNextCard(shiftId) : state))
+      .then(
+        (state) => {
+          setNotice(note);
+          if (state.status === "running") showCard(state);
+          else finish(state);
+        },
+        (error) => {
+          if (shiftGone(error)) {
+            restart();
+            return;
+          }
+          setPhase({
+            kind: "loadFailed",
+            message: `Не удалось вернуться к Смене: ${messageOf(error)}`,
+            retry: () => resync(shiftId, note),
+          });
+        },
+      );
+  }
+
+  const continueSavedShift = useEffectEvent((shiftId: string) => {
+    if (phase.kind === "restoring") continueShift(shiftId, null);
+  });
+
+  useEffect(() => {
+    if (saved) continueSavedShift(saved);
+  }, [saved]);
 
   function choose(mode: ShiftMode) {
     load(() => swipesApi.startShift(mode));
@@ -129,8 +238,10 @@ export function SwipeShift() {
   }
 
   function restart() {
+    forgetShift();
     setShift(null);
     setLast(null);
+    clearMessages();
     setPhase({ kind: "choosing" });
   }
 
@@ -143,43 +254,58 @@ export function SwipeShift() {
     else startTimer();
   }
 
-  async function submit(exitTo: SwipeAnswer, request: (card: ShiftCard, shiftId: string) => Promise<AnswerOutcome>) {
-    if (phase.kind !== "playing" || !ready || !shift?.card) return;
+  function send(shiftId: string, card: ShiftCard, answer: CardAnswer) {
+    return answer === "timeOut"
+      ? swipesApi.timeOut(shiftId, card.questionId)
+      : swipesApi.answer(shiftId, card.questionId, answer);
+  }
+
+  async function submit(answer: CardAnswer) {
+    if (sending.current || phase.kind !== "playing" || !ready || !shift?.card) return;
+    sending.current = true;
     const card = shift.card;
-    setPhase({ kind: "sending", exitTo });
-    setTiming((value) => ({ ...value, stoppedAt: performance.now() }));
-    setActionError(null);
+    setPhase({ kind: "sending", exitTo: answer === "timeOut" ? "unknown" : answer });
+    // Таймер стоит с первой попытки: после ошибки сети он не идёт дальше и не шлёт «Время вышло» сам.
+    setTiming((value) => (value.stoppedAt === null ? { ...value, stoppedAt: performance.now() } : value));
+    clearMessages();
     try {
-      const [outcome] = await Promise.all([request(card, shift.shiftId), wait(SWIPE_EXIT_MS)]);
+      const [outcome] = await Promise.all([send(shift.shiftId, card, answer), wait(SWIPE_EXIT_MS)]);
       setLast({ card, outcome });
       setShift(outcome.shift);
       if (skipsPause(shift, outcome)) advance(outcome.shift);
       else setPhase({ kind: "feedback" });
     } catch (error) {
-      setActionError(`Ответ не отправлен: ${messageOf(error)}. Попробуйте ещё раз.`);
-      setTiming((value) => ({ ...value, stoppedAt: null }));
-      setPhase({ kind: "playing" });
+      if (shiftGone(error)) {
+        restart();
+      } else if (alreadySettled(error)) {
+        resync(shift.shiftId, "Ответ на прошлую карточку уже был засчитан — продолжаем.");
+      } else {
+        setActionError({ message: `Ответ не отправлен: ${messageOf(error)}.`, resend: answer });
+        setPhase({ kind: "playing" });
+      }
+    } finally {
+      sending.current = false;
     }
   }
 
   function answerCard(answer: SwipeAnswer) {
-    void submit(answer, (card, shiftId) => swipesApi.answer(shiftId, card.questionId, answer));
+    void submit(answer);
   }
 
   function timeOut() {
-    void submit("unknown", (card, shiftId) => swipesApi.timeOut(shiftId, card.questionId));
+    void submit("timeOut");
   }
 
   /** Следующая карточка или итог, если Смена закончилась. */
   function advance(state: ShiftState) {
     if (state.status !== "running") {
-      setPhase({ kind: "finished" });
+      finish(state);
       return;
     }
     setPhase({ kind: "advancing" });
     setActionError(null);
     swipesApi.showNextCard(state.shiftId).then(showCard, (error) => {
-      setActionError(`Следующая карточка не пришла: ${messageOf(error)}. Попробуйте ещё раз.`);
+      setActionError({ message: `Следующая карточка не пришла: ${messageOf(error)}. Попробуйте ещё раз.`, resend: null });
       setPhase({ kind: "feedback" });
     });
   }
@@ -206,19 +332,36 @@ export function SwipeShift() {
     return () => window.removeEventListener("keydown", listener);
   }, []);
 
+  if (phase.kind === "restoring") {
+    if (saved === undefined) return null;
+    if (saved === null) return <ModeChoice onChoose={choose} />;
+    return <p className="m-auto text-sm text-muted-foreground">{RESUMING}</p>;
+  }
+
   if (phase.kind === "choosing") return <ModeChoice onChoose={choose} />;
 
   if (phase.kind === "loadFailed") {
     return (
       <div className="m-auto flex flex-col items-center gap-3 text-center">
-        <p className="text-sm text-danger">Не удалось начать Смену: {phase.message}</p>
-        <Button onClick={restart}>Попробовать снова</Button>
+        <p role="alert" className="text-sm text-danger">
+          {phase.message}
+        </p>
+        <div className="flex flex-wrap justify-center gap-2">
+          <Button onClick={phase.retry}>Попробовать снова</Button>
+          <Button variant="outline" onClick={restart} className="bg-card">
+            Новая Смена
+          </Button>
+        </div>
       </div>
     );
   }
 
   if (phase.kind === "loading" || !shift) {
-    return <p className="m-auto text-sm text-muted-foreground">Собираем колоду…</p>;
+    return (
+      <p className="m-auto text-sm text-muted-foreground">
+        {phase.kind === "loading" ? phase.label : LOADING_DECK}
+      </p>
+    );
   }
 
   if (phase.kind === "finished") {
@@ -235,6 +378,7 @@ export function SwipeShift() {
   const showingFeedback = (phase.kind === "feedback" || phase.kind === "advancing") && last;
   const card = shift.card;
   const dragEnabled = phase.kind === "playing" && ready;
+  const resend = phase.kind === "playing" ? actionError?.resend : null;
 
   return (
     <div
@@ -256,7 +400,7 @@ export function SwipeShift() {
         />
       ) : card ? (
         <>
-          <CardStack remaining={shift.progress.total - shift.progress.done}>
+          <CardStack remaining={shift.progress.total - shift.progress.done} checking={phase.kind === "sending"}>
             <SwipeCard
               key={turn}
               card={card}
@@ -290,10 +434,16 @@ export function SwipeShift() {
       ) : null}
 
       {actionError ? (
-        <p role="alert" className="text-sm text-danger">
-          {actionError}
-        </p>
+        <div role="alert" className="flex flex-col items-start gap-2 text-sm">
+          <p className="text-danger">{actionError.message}</p>
+          {resend ? (
+            <Button variant="outline" onClick={() => void submit(resend)} className="bg-card">
+              Отправить ещё раз
+            </Button>
+          ) : null}
+        </div>
       ) : null}
+      {notice ? <p className="text-sm text-muted-foreground">{notice}</p> : null}
 
       {!showingFeedback && card ? <SwipeAnywhereHint /> : null}
     </div>
@@ -345,8 +495,19 @@ function CycleBadge({ cycle }: { cycle: CycleInfo }) {
   );
 }
 
-/** Колода: под текущей карточкой видны края следующих, пока они есть. */
-function CardStack({ remaining, children }: { remaining: number; children: ReactNode }) {
+/**
+ * Колода: под текущей карточкой видны края следующих, пока они есть. checking — ответ улетел
+ * на сервер: на месте карточки «Сверяем ответ…», с задержкой, чтобы быстрый ответ не мигал.
+ */
+function CardStack({
+  remaining,
+  checking,
+  children,
+}: {
+  remaining: number;
+  checking: boolean;
+  children: ReactNode;
+}) {
   return (
     <div className="relative mb-3">
       {remaining > 2 ? (
@@ -355,6 +516,15 @@ function CardStack({ remaining, children }: { remaining: number; children: React
       {remaining > 1 ? (
         <div aria-hidden className="absolute inset-x-3 top-2 -bottom-1.5 rounded-xl bg-card/85 shadow-sm" />
       ) : null}
+      <p
+        aria-hidden={!checking}
+        className={cn(
+          "absolute inset-0 grid place-items-center text-sm font-bold text-muted-foreground opacity-0 transition-opacity",
+          checking && "opacity-100 delay-500",
+        )}
+      >
+        Сверяем ответ…
+      </p>
       {children}
     </div>
   );
