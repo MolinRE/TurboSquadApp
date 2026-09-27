@@ -6,7 +6,9 @@
 
 Архитектура: [docs/architecture.md](docs/architecture.md)
 
-User flow: [user-flow.md](docs/user-flow.md)
+Интеграция: [docs/integration.md](docs/integration.md)
+
+User flow: [docs/user-flow.md](docs/user-flow.md)
 
 ## Ключевые технические особенности
 

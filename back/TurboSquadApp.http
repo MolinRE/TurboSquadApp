@@ -1,6 +1,0 @@
-@TurboSquadApp_HostAddress = http://localhost:5017
-
-GET {{TurboSquadApp_HostAddress}}/weatherforecast/
-Accept: application/json
-
-###

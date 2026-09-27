@@ -8,6 +8,9 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		README.md = README.md
 		AGENTS.md = AGENTS.md
 		.env = .env
+		docs\architecture.md = docs\architecture.md
+		docs\integration.md = docs\integration.md
+		docs\user-flow.md = docs\user-flow.md
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TurboSquadApp.Tests", "back.Tests\TurboSquadApp.Tests.csproj", "{A8EB84C9-726D-4E3D-92F9-6EBAA8657807}"
