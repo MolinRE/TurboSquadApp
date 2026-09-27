@@ -17,6 +17,7 @@ using TurboSquadApp.Events;
 using TurboSquadApp.Content;
 using TurboSquadApp.Trips;
 using TurboSquadApp.Voice;
+using TurboSquadApp.Analytics;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -59,6 +60,7 @@ builder.Services.AddScoped<LoginService>();
 builder.Services.AddScoped<DemoAccountSeeder>();
 builder.Services.AddScoped<ContentSeeder>();
 builder.Services.AddScoped<TripService>();
+builder.Services.AddScoped<VoiceAnalyticsService>();
 var voiceOptions = VoiceOptions.FromConfiguration(builder.Configuration);
 builder.Services.AddSingleton(voiceOptions);
 builder.Services.AddHttpClient<PolzaSttClient>(client =>
@@ -193,6 +195,7 @@ app.MapGet("/api/auth/role-check/methodologist", () => Results.Ok(new { Role = U
 
 app.MapEventEndpoints();
 app.MapTripEndpoints();
+app.MapAnalyticsEndpoints();
 
 app.Run();
 
