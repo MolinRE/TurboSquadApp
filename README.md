@@ -5,14 +5,16 @@
 Нужны Docker Engine и Docker Compose v2. Из корня чистого клона локальное демо поднимается одной командой с публичными **только демонстрационными** значениями:
 
 ```bash
-docker compose --env-file .env.example up --build
+docker compose up
 ```
 
-Фронтенд: http://localhost:3000, API и Swagger: http://localhost:5017/swagger. Compose поднимает PostgreSQL, применяет существующие миграции EF Core, добавляет стартовый контент и три API демо-аккаунта. Данные БД сохраняются в Docker volume. Остановить стенд можно Ctrl+C; для последующих запусков достаточно той же команды без --build, если код не изменился.
+При первом запуске Compose соберёт образы. После изменения кода пересоберите их командой `docker compose up --build`.
 
-Для своих ключей один раз скопируйте .env.example в .env, замените пароли и Jwt__Key, затем запускайте `docker compose up --build`. .env не попадает в Git. ConnectionStrings__Postgres внутри Compose всегда указывает на локальный db, даже если в вашем .env указана внешняя БД. Чтобы не создавать демо-аккаунты, задайте DEMO_ACCOUNTS_SEED=false.
+Фронтенд: http://localhost:3000, API и Swagger: http://localhost:5017/swagger. Compose поднимает PostgreSQL, применяет существующие миграции EF Core, добавляет стартовый контент и три API демо-аккаунта. Данные БД сохраняются в Docker volume. Остановить стенд можно Ctrl+C; для последующих запусков достаточно той же команды.
 
-API-логины: conductor-star, conductor-novice, manager-methodologist; пароли задаются DEMO_*_PASSWORD в выбранном env-файле. Кнопки «Войти как…» во фронтенде пока открывают статические экраны и не вызывают API авторизации.
+Для своих ключей один раз скопируйте .env.example в .env, замените пароли и Jwt__Key, затем запускайте `docker compose up`. .env не попадает в Git. ConnectionStrings__Postgres внутри Compose всегда указывает на локальный db, даже если в вашем .env указана внешняя БД. Чтобы не создавать демо-аккаунты, задайте DEMO_ACCOUNTS_SEED=false.
+
+API-логины: conductor-star, conductor-novice, manager-methodologist; пароли заданы демонстрационными значениями в .env.example и переопределяются через DEMO_*_PASSWORD в личном .env. На экране «Войти как…» выберите аккаунт, введите его пароль и войдите через API.
 
 Голосовой API использует внешние polza.ai и Laya: для него задайте POLZA_API_KEY и LAYA_API_TOKEN в личном .env. Локального образа laya-serve в репозитории пока нет, поэтому Compose поднимает БД, API и фронтенд.
 
