@@ -37,6 +37,6 @@ export const demoAccounts: DemoAccount[] = [
     name: "Ольга Верещагина",
     initials: "ОВ",
     description: "Аналитика и CMS · Северное депо",
-    href: "/analytics/blind-spots",
+    href: "/analytics/voice",
   },
 ];
