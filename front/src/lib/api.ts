@@ -64,6 +64,7 @@ export type TripDebrief = {
           text: string;
           changes: Array<{ scale: string; name: string; applied: number; before: number; after: number }>;
           comment: string | null;
+          source: string | null;
           criticalError: boolean;
           knowledgeDelta: number;
           elapsedMs: number | null;
@@ -273,6 +274,13 @@ export function startTrip(serviceClass: string) {
 
 export function getTripDebrief(tripId: string) {
   return json<TripDebrief>(`/api/trips/${tripId}/debrief`);
+}
+
+export type TripDebriefExplanation = { text: string; model: string };
+
+/** Слой Б Разбора: ИИ пишет его заново при каждом запросе. */
+export function getTripDebriefExplanation(tripId: string) {
+  return json<TripDebriefExplanation>(`/api/trips/${tripId}/debrief/explanation`);
 }
 
 export function listTripDebriefs() {
