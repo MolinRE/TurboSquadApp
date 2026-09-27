@@ -1,0 +1,483 @@
+[
+  {
+    "id": "sw-pet-carrier",
+    "type": "swipe",
+    "statement": "Пассажир просит провезти собаку без переноски: она спокойная. Разрешить?",
+    "options": {
+      "right": {
+        "label": "Разрешить",
+        "scaleDeltas": {
+          "safety": -15,
+          "loyalty": 5
+        }
+      },
+      "left": {
+        "label": "Предложить переноску",
+        "scaleDeltas": {
+          "safety": 5
+        }
+      },
+      "correct": "left"
+    },
+    "explanation": {
+      "text": "Питомцев провозят только в переноске. Предложите переноску, при отказе вызовите начальника поезда.",
+      "keyFact": "только в переноске",
+      "source": "Ситуации на борту, №4"
+    },
+    "topic": "Посадка и документы",
+    "categories": [
+      "Штатная"
+    ],
+    "serviceClasses": [],
+    "baseFrequency": 1
+  },
+  {
+    "id": "sw-doors-closed",
+    "type": "swipe",
+    "statement": "Двери закрыты, поезд ещё стоит. Опоздавший пассажир стучит в дверь. Открыть?",
+    "options": {
+      "right": {
+        "label": "Открыть",
+        "scaleDeltas": {
+          "safety": -20,
+          "loyalty": 5
+        }
+      },
+      "left": {
+        "label": "Не открывать",
+        "scaleDeltas": {
+          "safety": 5
+        }
+      },
+      "correct": "left"
+    },
+    "explanation": {
+      "text": "После закрытия двери не открывают и поезд не задерживают. Направьте пассажира в кассу или приложение, чтобы переоформить билет.",
+      "keyFact": "двери не открывают",
+      "source": "Ситуации на борту, №3"
+    },
+    "topic": "Посадка и документы",
+    "categories": [
+      "Штатная"
+    ],
+    "serviceClasses": [],
+    "baseFrequency": 1
+  },
+  {
+    "id": "sw-radio-drunk",
+    "type": "swipe",
+    "statement": "Вызываете по рации начальника поезда к нетрезвому пассажиру. Назвать только вагон и место?",
+    "options": {
+      "right": {
+        "label": "Только вагон и место",
+        "scaleDeltas": {
+          "safety": 5
+        }
+      },
+      "left": {
+        "label": "Сказать, что пьян",
+        "scaleDeltas": {
+          "safety": -15
+        }
+      },
+      "correct": "right"
+    },
+    "explanation": {
+      "text": "По рации не говорят, что пассажир пьян: он может услышать и стать агрессивным.",
+      "keyFact": "не говорят, что пассажир пьян",
+      "source": "Ситуации на борту, №6"
+    },
+    "topic": "Конфликты",
+    "categories": [
+      "Нештатная"
+    ],
+    "serviceClasses": [],
+    "baseFrequency": 1
+  },
+  {
+    "id": "sw-own-medicine",
+    "type": "swipe",
+    "statement": "Пассажир просит таблетку от головной боли. Дать из своей аптечки?",
+    "options": {
+      "right": {
+        "label": "Дать свою",
+        "scaleDeltas": {
+          "safety": -15,
+          "loyalty": 5
+        }
+      },
+      "left": {
+        "label": "Не давать",
+        "scaleDeltas": {
+          "safety": 5
+        }
+      },
+      "correct": "left"
+    },
+    "explanation": {
+      "text": "Личные лекарства не выдают — ответственность ляжет на вас. Действуйте через аптечку поезда, начальника поезда и медиков.",
+      "keyFact": "Личные лекарства не выдают",
+      "source": "Ситуации на борту, №28"
+    },
+    "topic": "Медпомощь",
+    "categories": [
+      "Нештатная"
+    ],
+    "serviceClasses": [],
+    "baseFrequency": 1
+  },
+  {
+    "id": "sw-doctor-announcement",
+    "type": "swipe",
+    "statement": "Пассажиру стало плохо. Искать медиков среди пассажиров по громкой связи?",
+    "options": {
+      "right": {
+        "label": "Объявить",
+        "scaleDeltas": {
+          "safety": 5
+        }
+      },
+      "left": {
+        "label": "Не сеять панику",
+        "scaleDeltas": {
+          "safety": -15
+        }
+      },
+      "correct": "right"
+    },
+    "explanation": {
+      "text": "Вызовите начальника поезда и по громкой связи найдите медиков среди пассажиров. Панике не поддавайтесь, но и время не теряйте.",
+      "keyFact": "по громкой связи",
+      "source": "Ситуации на борту, №19"
+    },
+    "topic": "Медпомощь",
+    "categories": [
+      "Нештатная"
+    ],
+    "serviceClasses": [],
+    "baseFrequency": 1
+  },
+  {
+    "id": "sw-vape",
+    "type": "swipe",
+    "statement": "Пассажир курит электронную сигарету в тамбуре. Попросить прекратить?",
+    "options": {
+      "right": {
+        "label": "Попросить прекратить",
+        "scaleDeltas": {
+          "safety": 5
+        }
+      },
+      "left": {
+        "label": "Не вмешиваться",
+        "scaleDeltas": {
+          "safety": -20,
+          "loyalty": 5
+        }
+      },
+      "correct": "right"
+    },
+    "explanation": {
+      "text": "На борту запрещено курить, в том числе электронные сигареты. При отказе вызовите начальника поезда или ПТБ.",
+      "keyFact": "в том числе электронные сигареты",
+      "source": "Ситуации на борту, №20"
+    },
+    "topic": "Пожарная безопасность",
+    "categories": [
+      "Штатная"
+    ],
+    "serviceClasses": [],
+    "baseFrequency": 1
+  },
+  {
+    "id": "sw-unattended-bag",
+    "type": "swipe",
+    "statement": "Под креслом бесхозная сумка. Заглянуть внутрь, чтобы найти владельца?",
+    "options": {
+      "right": {
+        "label": "Заглянуть",
+        "scaleDeltas": {
+          "safety": -20
+        }
+      },
+      "left": {
+        "label": "Не трогать",
+        "scaleDeltas": {
+          "safety": 5
+        }
+      },
+      "correct": "left"
+    },
+    "explanation": {
+      "text": "Бесхозную вещь не трогают. Сообщите начальнику поезда и ПТБ по поездной радиосвязи.",
+      "keyFact": "не трогают",
+      "source": "Ситуации на борту, №41"
+    },
+    "topic": "Пожарная безопасность",
+    "categories": [
+      "Нештатная"
+    ],
+    "serviceClasses": [],
+    "baseFrequency": 1
+  },
+  {
+    "id": "sw-window",
+    "type": "swipe",
+    "statement": "Пассажиру душно, он просит открыть окно. Открыть?",
+    "options": {
+      "right": {
+        "label": "Открыть",
+        "scaleDeltas": {
+          "safety": -10,
+          "loyalty": 5
+        }
+      },
+      "left": {
+        "label": "Не открывать",
+        "scaleDeltas": {
+          "safety": 5
+        }
+      },
+      "correct": "left"
+    },
+    "explanation": {
+      "text": "Окна в поезде не открываются: воздух идёт через вентиляцию с очисткой. Предложите отрегулировать климат.",
+      "keyFact": "воздух идёт через вентиляцию",
+      "source": "Ситуации на борту, №35"
+    },
+    "topic": "Техника",
+    "categories": [
+      "Штатная"
+    ],
+    "serviceClasses": [],
+    "baseFrequency": 1
+  },
+  {
+    "id": "sw-night-light",
+    "type": "swipe",
+    "statement": "Ночью пассажир просит выключить в вагоне весь свет. Выключить полностью?",
+    "options": {
+      "right": {
+        "label": "Выключить",
+        "scaleDeltas": {
+          "safety": -10,
+          "loyalty": 5
+        }
+      },
+      "left": {
+        "label": "Оставить дежурный",
+        "scaleDeltas": {
+          "safety": 5
+        }
+      },
+      "correct": "left"
+    },
+    "explanation": {
+      "text": "Дежурное освещение остаётся всегда — ради безопасности всех на борту. Предложите маску для сна из каталога товаров.",
+      "keyFact": "Дежурное освещение остаётся всегда",
+      "source": "Ситуации на борту, №34"
+    },
+    "topic": "Техника",
+    "categories": [
+      "Штатная"
+    ],
+    "serviceClasses": [],
+    "baseFrequency": 1
+  },
+  {
+    "id": "sw-wait-first",
+    "type": "swipe",
+    "statement": "Первый класс: пассажир нажал кнопку вызова. Подойти в течение 10 минут — норма?",
+    "options": {
+      "right": {
+        "label": "Норма",
+        "scaleDeltas": {
+          "loyalty": -15
+        }
+      },
+      "left": {
+        "label": "Слишком долго",
+        "scaleDeltas": {
+          "loyalty": 5
+        }
+      },
+      "correct": "left"
+    },
+    "explanation": {
+      "text": "В Первом классе проводник подходит не дольше чем за 5 минут. Бизнес — 10, Комфорт — 15, Стандарт — 20.",
+      "keyFact": "не дольше чем за 5 минут",
+      "source": "СТО РЖД 03.011-2026, классы обслуживания"
+    },
+    "topic": "Сервис и питание",
+    "categories": [
+      "Штатная"
+    ],
+    "serviceClasses": [
+      "first"
+    ],
+    "baseFrequency": 1
+  },
+  {
+    "id": "sw-wait-business",
+    "type": "swipe",
+    "statement": "Бизнес: пассажир ждёт проводника уже 12 минут. Норматив ещё соблюдён?",
+    "options": {
+      "right": {
+        "label": "Соблюдён",
+        "scaleDeltas": {
+          "loyalty": -15
+        }
+      },
+      "left": {
+        "label": "Нарушен",
+        "scaleDeltas": {
+          "loyalty": 5
+        }
+      },
+      "correct": "left"
+    },
+    "explanation": {
+      "text": "В Бизнесе проводник подходит не дольше чем за 10 минут. Извинитесь и помогите.",
+      "keyFact": "не дольше чем за 10 минут",
+      "source": "СТО РЖД 03.011-2026, классы обслуживания"
+    },
+    "topic": "Сервис и питание",
+    "categories": [
+      "Штатная"
+    ],
+    "serviceClasses": [
+      "business"
+    ],
+    "baseFrequency": 1
+  },
+  {
+    "id": "sw-wait-standard",
+    "type": "swipe",
+    "statement": "Стандарт: проводник подошёл через 15 минут после вызова. Это в пределах нормы?",
+    "options": {
+      "right": {
+        "label": "В норме",
+        "scaleDeltas": {
+          "loyalty": 5
+        }
+      },
+      "left": {
+        "label": "Нарушение",
+        "scaleDeltas": {
+          "loyalty": -10
+        }
+      },
+      "correct": "right"
+    },
+    "explanation": {
+      "text": "В Стандарте норматив ожидания персонала — до 20 минут. В Комфорте — 15, в Бизнесе — 10, в Первом — 5.",
+      "keyFact": "до 20 минут",
+      "source": "СТО РЖД 03.011-2026, классы обслуживания"
+    },
+    "topic": "Сервис и питание",
+    "categories": [
+      "Штатная"
+    ],
+    "serviceClasses": [
+      "standard"
+    ],
+    "baseFrequency": 1
+  },
+  {
+    "id": "sw-comfort-kids",
+    "type": "swipe",
+    "statement": "Комфорт: 12-летний ребёнок едет без взрослых. Такое допустимо?",
+    "options": {
+      "right": {
+        "label": "Допустимо",
+        "scaleDeltas": {
+          "loyalty": 5
+        }
+      },
+      "left": {
+        "label": "Нельзя",
+        "scaleDeltas": {
+          "loyalty": -10
+        }
+      },
+      "correct": "right"
+    },
+    "explanation": {
+      "text": "В Комфорте могут ехать дети 10–16 лет без сопровождения. Подходите к ребёнку в течение поездки.",
+      "keyFact": "дети 10–16 лет без сопровождения",
+      "source": "СТО РЖД 03.011-2026, классы обслуживания; Ситуации на борту, №47"
+    },
+    "topic": "Посадка и документы",
+    "categories": [
+      "Штатная"
+    ],
+    "serviceClasses": [
+      "comfort"
+    ],
+    "baseFrequency": 1
+  },
+  {
+    "id": "sw-first-alcohol",
+    "type": "swipe",
+    "statement": "Первый класс: пассажир навеселе просит вина, оно входит в билет. Подать?",
+    "options": {
+      "right": {
+        "label": "Подать",
+        "scaleDeltas": {
+          "loyalty": 5
+        }
+      },
+      "left": {
+        "label": "Отказать",
+        "scaleDeltas": {
+          "loyalty": -15
+        }
+      },
+      "correct": "right"
+    },
+    "explanation": {
+      "text": "Если алкоголь включён в стоимость билета, отказать нельзя. Подайте и предупредите начальника поезда.",
+      "keyFact": "отказать нельзя",
+      "source": "Ситуации на борту, №50"
+    },
+    "topic": "Сервис и питание",
+    "categories": [
+      "Нештатная"
+    ],
+    "serviceClasses": [
+      "first"
+    ],
+    "baseFrequency": 1
+  },
+  {
+    "id": "sw-station-warning",
+    "type": "swipe",
+    "statement": "Пассажир проспал свою станцию. Проводник должен был заранее предупредить о выходе?",
+    "options": {
+      "right": {
+        "label": "Должен",
+        "scaleDeltas": {
+          "loyalty": 5
+        }
+      },
+      "left": {
+        "label": "Не обязан",
+        "scaleDeltas": {
+          "loyalty": -10
+        }
+      },
+      "correct": "right"
+    },
+    "explanation": {
+      "text": "Проводник обязан заблаговременно предупредить пассажира о выходе, если тот на своём месте. Сообщите начальнику поезда и объясните дальнейший порядок.",
+      "keyFact": "обязан заблаговременно предупредить",
+      "source": "Ситуации на борту, №38"
+    },
+    "topic": "Посадка и документы",
+    "categories": [
+      "Штатная"
+    ],
+    "serviceClasses": [],
+    "baseFrequency": 1
+  }
+]

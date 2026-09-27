@@ -32,9 +32,18 @@ public sealed record ProactiveOption
 /// <summary>Событие из сидов: разобранный документ и JSON в том виде, в каком он хранится в базе.</summary>
 public sealed record SeedEvent(EventDocument Document, string Json);
 
+/// <summary>Вопрос из сидов (PRD §9.1). Options — варианты по типу Вопроса, для свайпа — SwipeOptions.</summary>
+public sealed record SeedQuestion(
+    string Id, string Type, string Statement, JsonElement Options, SeedExplanation Explanation, string Topic,
+    IReadOnlyList<string> Categories, IReadOnlyList<string> ServiceClasses, double BaseFrequency = 1, int? TimeLimitSec = null);
+
+/// <summary>Пояснение: текст с ключевым фактом, пункт Источника и цитата из него.</summary>
+public sealed record SeedExplanation(string Text, string KeyFact, string Source, string? Quote = null);
+
 /// <summary>
-/// Стартовый контент Рейса этапа 1: справочники, Заступ на смену, №6 и №33 из «Ситуаций на борту», настройка Рейса.
-/// Перенесён из прототипа движка (ветка prototype/trip-engine) в формат PRD v7 §5.2. Файлы — ресурсы сборки, Content/Seeds.
+/// Стартовый контент этапа 1: справочники, Заступ на смену, №6 и №33 из «Ситуаций на борту», настройка Рейса —
+/// перенесены из прототипа движка (ветка prototype/trip-engine) в формат PRD v7 §5.2; Вопросы-свайпы — из
+/// локальных данных экрана Смены на свайпах (#24). Файлы — ресурсы сборки, Content/Seeds.
 /// </summary>
 public static class SeedContent
 {
@@ -49,6 +58,9 @@ public static class SeedContent
 
     public static TripSettings Trip { get; } =
         JsonSerializer.Deserialize<TripSettings>(ReadResource("trip.json"), EventJson.Options)!;
+
+    public static IReadOnlyList<SeedQuestion> Questions { get; } =
+        JsonSerializer.Deserialize<List<SeedQuestion>>(ReadResource("questions.json"), EventJson.Options)!;
 
     /// <summary>Флаги, которые ставят остальные сиды: «Флаги между Событиями» внутри стартового контента.</summary>
     public static IReadOnlyCollection<string> FlagsSetElsewhere(string eventId) => Events

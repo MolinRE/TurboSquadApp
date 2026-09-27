@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using TurboSquadApp.Data;
 using TurboSquadApp.Events;
+using TurboSquadApp.Questions;
 
 namespace TurboSquadApp.Content;
 
@@ -28,6 +29,8 @@ public sealed class ContentSeeder(AppDbContext dbContext)
                     string.Join("; ", report.Errors.Select(error => $"{error.Where}: {error.Message}")));
             }
         }
+
+        var questions = SeedContent.Questions.Select(seed => QuestionRecordOf(seed, directory)).ToList();
 
         var existingScales = await dbContext.Scales.Select(scale => scale.Code).ToListAsync(cancellationToken);
         dbContext.Scales.AddRange(directory.Scales
@@ -63,6 +66,32 @@ public sealed class ContentSeeder(AppDbContext dbContext)
                 Document = JsonSerializer.Serialize(SeedContent.Trip, EventJson.Options),
             });
 
+        var existingQuestions = await dbContext.Questions.Select(question => question.Id).ToListAsync(cancellationToken);
+        dbContext.Questions.AddRange(questions.Where(question => !existingQuestions.Contains(question.Id)));
+
         await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>Вопрос из сидов — опубликованным. Битый сид (свайп с чужой Шкалой или Классом) останавливает запуск.</summary>
+    private static QuestionRecord QuestionRecordOf(SeedQuestion seed, ContentDirectory directory)
+    {
+        if (seed.Type != QuestionTypes.Swipe)
+            throw new InvalidOperationException($"Seed question '{seed.Id}': only swipe questions are seeded, got '{seed.Type}'.");
+        var options = seed.Options.Deserialize<SwipeOptions>(EventJson.Options)!;
+        var unknownScales = options.Right.ScaleDeltas.Keys.Concat(options.Left.ScaleDeltas.Keys)
+            .Where(code => directory.Scales.All(scale => scale.Code != code));
+        var unknownClasses = seed.ServiceClasses.Where(code => directory.Classes.All(serviceClass => serviceClass.Code != code));
+        if (unknownScales.Concat(unknownClasses).ToList() is [_, ..] unknown)
+            throw new InvalidOperationException($"Seed question '{seed.Id}' refers to unknown codes: {string.Join(", ", unknown)}.");
+
+        return new QuestionRecord
+        {
+            Id = seed.Id, Type = seed.Type, Status = QuestionStatuses.Published, Statement = seed.Statement,
+            Options = JsonSerializer.Serialize(options, EventJson.Options),
+            ExplanationText = seed.Explanation.Text, ExplanationKeyFact = seed.Explanation.KeyFact,
+            Quote = seed.Explanation.Quote, Source = seed.Explanation.Source, Topic = seed.Topic,
+            Categories = JsonSerializer.Serialize(seed.Categories), ServiceClasses = JsonSerializer.Serialize(seed.ServiceClasses),
+            BaseFrequency = seed.BaseFrequency, TimeLimitSec = seed.TimeLimitSec,
+        };
     }
 }

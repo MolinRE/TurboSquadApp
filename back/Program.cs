@@ -15,6 +15,7 @@ using TurboSquadApp.Data;
 using Microsoft.AspNetCore.Identity;
 using TurboSquadApp.Events;
 using TurboSquadApp.Content;
+using TurboSquadApp.Swipes;
 using TurboSquadApp.Trips;
 using TurboSquadApp.Voice;
 
@@ -59,6 +60,8 @@ builder.Services.AddScoped<LoginService>();
 builder.Services.AddScoped<DemoAccountSeeder>();
 builder.Services.AddScoped<ContentSeeder>();
 builder.Services.AddScoped<TripService>();
+builder.Services.AddScoped<SwipeShiftService>();
+builder.Services.AddSingleton(Random.Shared);   // колода Смены на свайпах; в тестах — с зерном
 var voiceOptions = VoiceOptions.FromConfiguration(builder.Configuration);
 builder.Services.AddSingleton(voiceOptions);
 builder.Services.AddHttpClient<PolzaSttClient>(client =>
@@ -193,6 +196,7 @@ app.MapGet("/api/auth/role-check/methodologist", () => Results.Ok(new { Role = U
 
 app.MapEventEndpoints();
 app.MapTripEndpoints();
+app.MapSwipeEndpoints();
 
 app.Run();
 

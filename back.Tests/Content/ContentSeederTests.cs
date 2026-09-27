@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
 using TurboSquadApp.Content;
 using TurboSquadApp.Data;
@@ -47,6 +48,20 @@ public class ContentSeederTests
     }
 
     [Fact]
+    public async Task Empty_database_gets_published_swipe_questions()
+    {
+        await Seed();
+
+        await using var db = new AppDbContext(_options);
+        var questions = await db.Questions.ToListAsync();
+        Assert.Equal(15, questions.Count);
+        Assert.All(questions, q => Assert.Equal(("swipe", "published"), (q.Type, q.Status)));
+        var pet = questions.Single(q => q.Id == "sw-pet-carrier");
+        Assert.Equal("left", JsonNode.Parse(pet.Options)!["correct"]!.GetValue<string>());
+        Assert.Equal(("только в переноске", "Ситуации на борту, №4"), (pet.ExplanationKeyFact, pet.Source));
+    }
+
+    [Fact]
     public async Task Repeated_start_creates_no_duplicates()
     {
         await Seed();
@@ -54,8 +69,8 @@ public class ContentSeederTests
 
         await using var db = new AppDbContext(_options);
         Assert.Equal(
-            (2, 4, 3, 1),
+            (2, 4, 3, 1, 15),
             (await db.Scales.CountAsync(), await db.ServiceClasses.CountAsync(),
-             await db.EventDocuments.CountAsync(), await db.TripSettings.CountAsync()));
+             await db.EventDocuments.CountAsync(), await db.TripSettings.CountAsync(), await db.Questions.CountAsync()));
     }
 }
