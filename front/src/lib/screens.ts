@@ -127,19 +127,6 @@ export const screens: Screen[] = [
     ],
   },
   {
-    id: "notifications",
-    path: "/notifications",
-    title: "Уведомления",
-    template: "player",
-    role: "Проводник",
-    stage: 1,
-    summary: "Центр уведомлений (колокольчик).",
-    contents: [
-      "Новое Событие опубликовано",
-      "Этап 2: Челлендж недели, Ачивки и Звания, сгорание Бонуса регулярности, конец Сезона",
-    ],
-  },
-  {
     id: "review",
     path: "/reviews/[id]",
     title: "Разбор",
