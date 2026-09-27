@@ -18,6 +18,12 @@ export function roleStageSummary(stages: Record<string, number>): string {
 }
 
 export function TripDebriefFacts({ debrief }: { debrief: TripDebrief }) {
+  // Голосовую попытку подписываем ситуацией Шага, а не его идентификаторами.
+  const situations = new Map<string, string>();
+  for (const item of debrief.items) {
+    if (item.kind !== "event") continue;
+    for (const decision of item.decisions) situations.set(`${item.eventId}/${decision.stepId}`, `${item.title}: ${decision.situation}`);
+  }
   return (
     <div className="flex flex-col gap-3">
       {debrief.items.map((item, index) => item.kind === "proactiveChoice" ? (
@@ -65,7 +71,7 @@ export function TripDebriefFacts({ debrief }: { debrief: TripDebrief }) {
           <h3 className="font-semibold">Разбор голосовых ответов</h3>
           {debrief.voiceAttempts.map((attempt) => (
             <div key={attempt.attemptId} className="rounded-lg bg-muted p-3 text-sm">
-              <p className="font-semibold">Событие {attempt.eventId}, версия {attempt.eventVersion}, Шаг {attempt.stepId}</p>
+              <p className="font-semibold">{situations.get(`${attempt.eventId}/${attempt.stepId}`) ?? `Событие ${attempt.eventId}, Шаг ${attempt.stepId}`}</p>
               {attempt.transcript && <p className="mt-1">«{attempt.transcript}»</p>}
               {attempt.score !== null && <p className="mt-1">Вежливость: {Math.round(attempt.score * 100)}%{attempt.scoreConfidence !== null && ` · уверенность ${Math.round(attempt.scoreConfidence * 100)}%`}</p>}
               {attempt.roleStages && <p className="mt-1">Ролевая модель: {roleStageSummary(attempt.roleStages)}</p>}
