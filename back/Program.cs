@@ -24,6 +24,7 @@ using TurboSquadApp.Questions;
 using TurboSquadApp.Sources;
 using TurboSquadApp.Scoring;
 using TurboSquadApp.Achievements;
+using TurboSquadApp.Integration;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -262,6 +263,7 @@ app.MapAchievementEndpoints();
 app.MapQuestionBankEndpoints();
 app.MapSourceEndpoints();
 app.MapEventCmsEndpoints();
+app.MapIntegrationEndpoints();
 
 app.Run();
 
