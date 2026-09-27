@@ -9,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using TurboSquadApp.Data;
 using TurboSquadApp.Voice;
+using TurboSquadApp.Sources;
 
 namespace TurboSquadApp.Tests.Trips;
 
@@ -36,6 +37,8 @@ public sealed class TripApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<IVoicePipeline>(sp => sp.GetRequiredService<FakeVoicePipeline>());
             services.AddSingleton<FakeLlmClient>();
             services.AddSingleton<ILlmClient>(sp => sp.GetRequiredService<FakeLlmClient>());
+            services.AddSingleton<FakeQuestionGenerationClient>();
+            services.AddSingleton<IQuestionGenerationClient>(sp => sp.GetRequiredService<FakeQuestionGenerationClient>());
         });
 
     /// <summary>Клиент от имени нового Проводника.</summary>
@@ -81,6 +84,17 @@ public sealed class TripApiFactory : WebApplicationFactory<Program>
     {
         await using var scope = Services.CreateAsyncScope();
         return await query(scope.ServiceProvider.GetRequiredService<AppDbContext>());
+    }
+}
+
+public sealed class FakeQuestionGenerationClient : IQuestionGenerationClient
+{
+    public List<QuestionGenerationPrompt> Prompts { get; } = [];
+    public Func<QuestionGenerationPrompt, string> Response { get; set; } = _ => "{\"questions\":[]}";
+    public Task<string> GenerateAsync(QuestionGenerationPrompt prompt, CancellationToken cancellationToken)
+    {
+        Prompts.Add(prompt);
+        return Task.FromResult(Response(prompt));
     }
 }
 

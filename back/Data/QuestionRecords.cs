@@ -41,6 +41,10 @@ public sealed class QuestionRecord
     /// <summary>Пункт Источника.</summary>
     public string Source { get; set; } = string.Empty;
 
+    /// <summary>Источник CMS, из которого создан Черновик; старый контент может не иметь ссылки.</summary>
+    public Guid? SourceId { get; set; }
+    public SourceRecord? SourceDocument { get; set; }
+
     public string Topic { get; set; } = string.Empty;
 
     /// <summary>Категории (jsonb, массив строк).</summary>
@@ -70,6 +74,9 @@ internal static class QuestionModel
             entity.Property(question => question.ExplanationText).IsRequired();
             entity.Property(question => question.ExplanationKeyFact).IsRequired();
             entity.Property(question => question.Source).HasMaxLength(300).IsRequired();
+            entity.HasOne(question => question.SourceDocument).WithMany()
+                .HasForeignKey(question => question.SourceId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasIndex(question => question.SourceId);
             entity.Property(question => question.Topic).HasMaxLength(100).IsRequired();
             entity.Property(question => question.Categories).HasColumnType("jsonb").IsRequired();
             entity.Property(question => question.ServiceClasses).HasColumnType("jsonb").IsRequired();

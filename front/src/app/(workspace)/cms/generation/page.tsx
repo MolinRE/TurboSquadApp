@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
-import { ScreenPlaceholder } from "@/components/shell/screen-placeholder";
+import { GenerationWorkspace } from "@/components/cms/generation-workspace";
 import { getScreen } from "@/lib/screens";
 
 export const metadata: Metadata = { title: getScreen("generation").title };
 
 export default function Page() {
-  return <ScreenPlaceholder id="generation" />;
+  return <GenerationWorkspace />;
 }

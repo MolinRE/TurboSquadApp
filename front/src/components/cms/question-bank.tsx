@@ -64,7 +64,17 @@ export function QuestionBank() {
 
   useEffect(() => {
     Promise.all([listQuestions(), getQuestionCatalog()])
-      .then(([items, reference]) => { setQuestions(items); setCatalog(reference); })
+      .then(([items, reference]) => {
+        setQuestions(items);
+        setCatalog(reference);
+        const requested = new URLSearchParams(window.location.search).get("question");
+        const question = items.find((item) => item.id === requested);
+        if (question) {
+          setSelected(question);
+          setForm(editorOf(question));
+          setCategoriesText(question.categories.join(", "));
+        }
+      })
       .catch((reason) => {
         if (reason instanceof ApiError && reason.status === 401) {
           window.localStorage.removeItem("turbo.accessToken");
