@@ -44,7 +44,7 @@ public sealed record Debrief(
             .Select(attempt => new DebriefVoiceAttempt(
                 attempt.EventId, attempt.EventVersion, attempt.StepId, attempt.Transcript, attempt.Choice,
                 attempt.Confidence, attempt.LatencyMs, attempt.Applied, attempt.ErrorCode,
-                attempt.ProviderRequestId))
+                attempt.ProviderRequestId, attempt.AttemptId, attempt.PassengerReply, attempt.ReplyError))
             .ToList();
         return new Debrief(state.Status, SummaryOf(state), items, voiceAttempts);
     }
@@ -101,4 +101,5 @@ public sealed record DebriefScaleChange(string Scale, string Name, int Nominal, 
 
 public sealed record DebriefVoiceAttempt(
     string EventId, int EventVersion, string StepId, string? Transcript, string? Choice,
-    double? Confidence, int LatencyMs, bool Applied, string? ErrorCode, string? ProviderRequestId);
+    double? Confidence, int LatencyMs, bool Applied, string? ErrorCode, string? ProviderRequestId,
+    string AttemptId, string? PassengerReply, string? ReplyError);

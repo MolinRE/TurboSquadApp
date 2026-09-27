@@ -36,9 +36,9 @@ public static class TripEndpoints
             .WithDescription("eventId и stepId — Шаг, на который отвечает проводник: ответ на уже пройденный Шаг (повторный клик) отклоняется. Сервер перепроверяет Условия Варианта. Ответ позже таймера больше чем на 1 с засчитывается как таймаут.");
 
         trips.MapPost("/{id:guid}/voice", async (
-                Guid id, [FromForm] string eventId, [FromForm] string stepId, IFormFile audio,
+                Guid id, [FromForm] string eventId, [FromForm] string stepId, [FromForm] string attemptId, IFormFile audio,
                 HttpContext http, TripService service, CancellationToken ct) =>
-                await service.VoiceAsync(UserId(http), id, eventId, stepId, audio, ct))
+                await service.VoiceAsync(UserId(http), id, eventId, stepId, attemptId, audio, ct))
             .Accepts<VoiceStepRequest>("multipart/form-data")
             .Produces<TripView>()
             .ProducesProblem(StatusCodes.Status409Conflict)
@@ -46,8 +46,17 @@ public static class TripEndpoints
             .Produces(StatusCodes.Status404NotFound)
             .WithName("AnswerVoiceStep")
             .WithSummary("Ответить голосом")
-            .WithDescription("Принимает готовый аудиофрагмент голосового Шага, распознаёт его через GigaAM-v3, маршрутизирует Laya и применяет выбранный Вариант. Аудио не сохраняется.")
+            .WithDescription("Принимает готовый аудиофрагмент голосового Шага с idempotency attemptId, распознаёт его через GigaAM-v3, маршрутизирует Laya и применяет выбранный Вариант. Аудио не сохраняется.")
             .DisableAntiforgery();
+
+        trips.MapGet("/{id:guid}/voice/{attemptId}/reply", async (
+                Guid id, string attemptId, HttpContext http, TripService service, CancellationToken ct) =>
+                await service.StreamVoiceReplyAsync(UserId(http), id, attemptId, http.Response, ct))
+            .Produces(StatusCodes.Status200OK, contentType: "text/event-stream")
+            .Produces(StatusCodes.Status404NotFound)
+            .WithName("StreamPassengerReply")
+            .WithSummary("Поток реплики пассажира")
+            .WithDescription("После применения вердикта Laya потоково передаёт токены реплики пассажира от Qwen. Повторное подключение отдаёт сохранённый итог.");
 
         trips.MapPost("/{id:guid}/timeout", (Guid id, TimeOutRequest request, HttpContext http, TripService service, CancellationToken ct) =>
                 service.ActAsync(UserId(http), id, new TimeOut(), new StepPosition(request.EventId, request.StepId), ct))
@@ -86,7 +95,7 @@ public sealed record StartTripRequest(string ServiceClass);
 
 public sealed record ChooseVariantRequest(string EventId, string StepId, string VariantId);
 
-public sealed record VoiceStepRequest(string EventId, string StepId, IFormFile Audio);
+public sealed record VoiceStepRequest(string EventId, string StepId, string AttemptId, IFormFile Audio);
 
 public sealed record TimeOutRequest(string EventId, string StepId);
 

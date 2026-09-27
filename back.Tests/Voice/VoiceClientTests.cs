@@ -79,6 +79,60 @@ public class VoiceClientTests
         Assert.Equal("LayaInvalidResponse", layaResult.ErrorCode);
     }
 
+    [Fact]
+    public async Task Polza_qwen_stream_reads_content_only_and_sends_deterministic_options()
+    {
+        HttpRequestMessage? captured = null;
+        string? capturedBody = null;
+        var handler = new CapturingHandler(request =>
+        {
+            captured = request;
+            capturedBody = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            var response = new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    "data: {\"id\":\"qwen-1\",\"choices\":[{\"delta\":{\"reasoning\":\"hidden\",\"content\":\"Добрый день.\"}}]}\n\n" +
+                    "data: {\"id\":\"qwen-1\",\"choices\":[{\"delta\":{\"content\":\" Прошу пройти.\"}}]}\n\n" +
+                    "data: [DONE]\n\n",
+                    new System.Text.UTF8Encoding(false), "text/event-stream")
+            };
+            return response;
+        });
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("https://polza.test/api/v1/") };
+        var client = new PolzaLlmClient(http, new VoiceOptions { PolzaApiKey = "polza-test" });
+
+        var tokens = new List<LlmToken>();
+        await foreach (var token in client.StreamAsync(new LlmRequest("system", "context"), CancellationToken.None))
+            tokens.Add(token);
+
+        Assert.Equal("Добрый день. Прошу пройти.", string.Concat(tokens.Select(token => token.Text)));
+        Assert.NotNull(captured);
+        var json = JsonDocument.Parse(capturedBody!).RootElement;
+        Assert.Equal("qwen/qwen3.6-35b-a3b", json.GetProperty("model").GetString());
+        Assert.True(json.GetProperty("stream").GetBoolean());
+        Assert.Equal("low", json.GetProperty("reasoning").GetProperty("effort").GetString());
+        Assert.Equal("Bearer", captured!.Headers.Authorization!.Scheme);
+    }
+
+    [Fact]
+    public async Task Qwen_stream_without_done_is_reported_as_interrupted()
+    {
+        var handler = new CapturingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                "data: {\"id\":\"qwen-1\",\"choices\":[{\"delta\":{\"content\":\"текст\"}}]}\n\n",
+                new System.Text.UTF8Encoding(false), "text/event-stream")
+        });
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("https://polza.test/api/v1/") };
+        var client = new PolzaLlmClient(http, new VoiceOptions { PolzaApiKey = "polza-test" });
+
+        var error = await Assert.ThrowsAsync<LlmProviderException>(async () =>
+        {
+            await foreach (var _ in client.StreamAsync(new LlmRequest("system", "context"), CancellationToken.None)) { }
+        });
+        Assert.Equal("LlmStreamInterrupted", error.Code);
+    }
+
     private static HttpResponseMessage Json(HttpStatusCode status, string body) => new(status)
     {
         Content = new StringContent(body, new System.Text.UTF8Encoding(false), "application/json")

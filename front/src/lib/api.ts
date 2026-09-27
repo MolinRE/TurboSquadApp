@@ -6,6 +6,10 @@ export type VoiceAttempt = {
   applied: boolean;
   errorCode: string | null;
   providerRequestId: string | null;
+  attemptId: string;
+  passengerReply: string | null;
+  replyError: string | null;
+  pending?: boolean;
 };
 
 export type TripView = {
@@ -125,11 +129,13 @@ export async function uploadVoice(
   tripId: string,
   eventId: string,
   stepId: string,
+  attemptId: string,
   audio: Blob,
 ): Promise<TripView> {
   const form = new FormData();
   form.append("eventId", eventId);
   form.append("stepId", stepId);
+  form.append("attemptId", attemptId);
   form.append("audio", audio, "voice-answer.webm");
   const response = await fetch(`${API_BASE_URL}/api/trips/${tripId}/voice`, {
     method: "POST",
@@ -141,4 +147,60 @@ export async function uploadVoice(
     throw new ApiError(payload?.detail ?? payload?.message ?? "Голосовая попытка не прошла", response.status, payload);
   }
   return payload as TripView;
+}
+
+export async function streamPassengerReply(
+  tripId: string,
+  attemptId: string,
+  onToken: (text: string) => void,
+  onTrip?: (trip: TripView) => void,
+  signal?: AbortSignal,
+): Promise<string> {
+  const response = await fetch(`${API_BASE_URL}/api/trips/${tripId}/voice/${encodeURIComponent(attemptId)}/reply`, {
+    headers: headers(),
+    signal,
+  });
+  if (!response.ok) {
+    const payload = await readPayload(response);
+    throw new ApiError(payload?.detail ?? payload?.message ?? "Реплика пассажира не получена", response.status, payload);
+  }
+  if (!response.body) throw new ApiError("Сервер не открыл поток реплики", response.status);
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let reply = "";
+  let completed = false;
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      buffer += decoder.decode(chunk.value, { stream: true });
+      const events = buffer.split("\n\n");
+      buffer = events.pop() ?? "";
+      for (const event of events) {
+        const name = event.match(/^event:\s*(.+)$/m)?.[1]?.trim();
+        const data = event.match(/^data:\s*(.+)$/m)?.[1];
+        if (!name || !data) continue;
+        const payload = JSON.parse(data) as { text?: string; reply?: string; reason?: string; message?: string; trip?: TripView };
+        if (name === "token" && payload.text) {
+          reply += payload.text;
+          onToken(payload.text);
+        } else if (name === "done") {
+          completed = true;
+          if (payload.trip) onTrip?.(payload.trip);
+          if (payload.reply && payload.reply !== reply) {
+            reply = payload.reply;
+          }
+        } else if (name === "error") {
+          if (payload.trip) onTrip?.(payload.trip);
+          throw new ApiError(payload.message ?? "Реплика пассажира не сгенерирована", 422, { reason: payload.reason });
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  if (!completed) throw new ApiError("Поток реплики завершился без итогового события", 502);
+  return reply;
 }

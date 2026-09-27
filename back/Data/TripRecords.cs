@@ -74,6 +74,9 @@ public sealed class TripJournalRecord
     public bool VoiceApplied { get; set; }
     public string? VoiceError { get; set; }
     public string? VoiceRequestId { get; set; }
+    public string? VoiceAttemptId { get; set; }
+    public string? VoicePassengerReply { get; set; }
+    public string? VoiceReplyError { get; set; }
 
     /// <summary>Итог События: success, failure или interrupted — Событие прервано Срывом рейса.</summary>
     public string? Result { get; set; }
@@ -124,6 +127,12 @@ internal static class TripModel
             entity.Property(row => row.VoiceChoice).HasMaxLength(100);
             entity.Property(row => row.VoiceError).HasMaxLength(80);
             entity.Property(row => row.VoiceRequestId).HasMaxLength(200);
+            entity.Property(row => row.VoiceAttemptId).HasMaxLength(100);
+            entity.Property(row => row.VoicePassengerReply).HasColumnType("text");
+            entity.Property(row => row.VoiceReplyError).HasMaxLength(80);
+            entity.HasIndex(row => new { row.TripId, row.VoiceAttemptId })
+                .HasFilter("\"kind\" = 'voiceAttempt'")
+                .IsUnique();
         });
     }
 }

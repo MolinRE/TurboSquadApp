@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -14,6 +15,10 @@ public sealed class VoiceOptions
     public string LayaEndpoint { get; init; } = "http://176.108.247.22:8000/v1/systemone";
     public string LayaToken { get; init; } = string.Empty;
     public string LayaModel { get; init; } = "multilingual";
+    public string LlmModel { get; init; } = "qwen/qwen3.6-35b-a3b";
+    public string LlmReasoningEffort { get; init; } = "low";
+    public int LlmMaxTokens { get; init; } = 256;
+    public TimeSpan LlmTimeout { get; init; } = TimeSpan.FromSeconds(15);
     public double MinimumConfidence { get; init; } = 0.7;
     public long MaxAudioBytes { get; init; } = 10 * 1024 * 1024;
 
@@ -30,6 +35,10 @@ public sealed class VoiceOptions
             ?? DotEnv("LAYA_API_KEY")
             ?? string.Empty,
         LayaModel = configuration["Voice:LayaModel"] ?? "multilingual",
+        LlmModel = configuration["Voice:LlmModel"] ?? "qwen/qwen3.6-35b-a3b",
+        LlmReasoningEffort = configuration["Voice:LlmReasoningEffort"] ?? "low",
+        LlmMaxTokens = configuration.GetValue("Voice:LlmMaxTokens", 256),
+        LlmTimeout = TimeSpan.FromSeconds(configuration.GetValue("Voice:LlmTimeoutSeconds", 15)),
         MinimumConfidence = configuration.GetValue("Voice:MinimumConfidence", 0.7),
         MaxAudioBytes = configuration.GetValue("Voice:MaxAudioBytes", 10 * 1024 * 1024L),
     };
@@ -100,6 +109,22 @@ public interface ILayaClient
     Task<LayaResult> DecideAsync(
         string situation, string? brief, string transcript, IReadOnlyList<VoiceQuestion> questions,
         CancellationToken cancellationToken);
+}
+
+public sealed record LlmRequest(string SystemPrompt, string UserPrompt);
+
+public sealed record LlmToken(string Text, string? RequestId);
+
+public sealed class LlmProviderException(string code, string message, string? requestId = null) : Exception(message)
+{
+    public string Code { get; } = code;
+    public string? RequestId { get; } = requestId;
+}
+
+public interface ILlmClient
+{
+    IAsyncEnumerable<LlmToken> StreamAsync(
+        LlmRequest request, CancellationToken cancellationToken);
 }
 
 public sealed class VoicePipelineService(
@@ -276,4 +301,136 @@ public sealed class LayaClient(HttpClient httpClient, VoiceOptions options) : IL
         string? Choice,
         double? Confidence,
         [property: JsonPropertyName("answer_confidence")] double? AnswerConfidence);
+}
+
+public sealed class PolzaLlmClient(HttpClient httpClient, VoiceOptions options) : ILlmClient
+{
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
+    public async IAsyncEnumerable<LlmToken> StreamAsync(
+        LlmRequest request,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(options.PolzaApiKey))
+            throw new LlmProviderException("LlmConfigurationMissing", "Не задан ключ polza.ai");
+
+        var payload = new
+        {
+            model = options.LlmModel,
+            stream = true,
+            reasoning = new { effort = options.LlmReasoningEffort },
+            max_tokens = options.LlmMaxTokens,
+            messages = new[]
+            {
+                new { role = "system", content = request.SystemPrompt },
+                new { role = "user", content = request.UserPrompt },
+            },
+        };
+        using var message = new HttpRequestMessage(HttpMethod.Post, "chat/completions")
+        {
+            Content = JsonContent.Create(payload, options: JsonOptions),
+        };
+        message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", options.PolzaApiKey);
+
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(options.LlmTimeout);
+        HttpResponseMessage response;
+        try
+        {
+            response = await httpClient.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new LlmProviderException("LlmTimeout", "Истёк таймаут генерации реплики пассажира");
+        }
+        catch (HttpRequestException)
+        {
+            throw new LlmProviderException("LlmUnavailable", "Сервис генерации реплики недоступен");
+        }
+
+        using (response)
+        {
+            var requestId = response.Headers.TryGetValues("x-request-id", out var ids) ? ids.FirstOrDefault() : null;
+            if (!response.IsSuccessStatusCode)
+            {
+                var status = (int)response.StatusCode;
+                throw new LlmProviderException("LlmProviderError", $"polza.ai вернул {status}", requestId);
+            }
+
+            if (response.Content.Headers.ContentType?.MediaType is not "text/event-stream")
+                throw new LlmProviderException("LlmInvalidResponse", "polza.ai не вернул поток SSE", requestId);
+
+            Stream stream;
+            try
+            {
+                stream = await response.Content.ReadAsStreamAsync(timeout.Token);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                throw new LlmProviderException("LlmTimeout", "Истёк таймаут генерации реплики пассажира", requestId);
+            }
+            catch (HttpRequestException)
+            {
+                throw new LlmProviderException("LlmUnavailable", "Поток Qwen оборвался", requestId);
+            }
+
+            await using (stream)
+            using (var reader = new StreamReader(stream))
+            {
+                var emitted = false;
+                var completed = false;
+                while (true)
+                {
+                    string? line;
+                    try
+                    {
+                        line = await reader.ReadLineAsync(timeout.Token);
+                    }
+                    catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                    {
+                        throw new LlmProviderException("LlmTimeout", "Истёк таймаут генерации реплики пассажира", requestId);
+                    }
+                    catch (HttpRequestException)
+                    {
+                        throw new LlmProviderException("LlmUnavailable", "Поток Qwen оборвался", requestId);
+                    }
+                    if (line is null) break;
+                    if (!line.StartsWith("data:", StringComparison.OrdinalIgnoreCase)) continue;
+                    var data = line[5..].Trim();
+                    if (data == "[DONE]")
+                    {
+                        completed = true;
+                        break;
+                    }
+
+                    LlmChunk? chunk;
+                    try
+                    {
+                        chunk = JsonSerializer.Deserialize<LlmChunk>(data, JsonOptions);
+                    }
+                    catch (JsonException)
+                    {
+                        throw new LlmProviderException("LlmInvalidResponse", "polza.ai вернул некорректный SSE JSON", requestId);
+                    }
+
+                    var chunkId = chunk?.Id ?? requestId;
+                    var text = chunk?.Choices?.FirstOrDefault()?.Delta?.Content;
+                    if (string.IsNullOrEmpty(text)) continue;
+                    emitted = true;
+                    yield return new LlmToken(text, chunkId);
+                }
+
+                if (!completed)
+                    throw new LlmProviderException("LlmStreamInterrupted", "Поток Qwen завершился без сигнала окончания", requestId);
+                if (!emitted)
+                    throw new LlmProviderException("LlmInvalidResponse", "Qwen не вернул текст реплики", requestId);
+            }
+        }
+    }
+
+    private sealed record LlmChunk(string? Id, IReadOnlyList<LlmChoice>? Choices);
+
+    private sealed record LlmChoice(LlmDelta? Delta);
+
+    private sealed record LlmDelta(string? Content);
 }
