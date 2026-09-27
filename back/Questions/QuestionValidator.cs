@@ -31,6 +31,8 @@ public static class QuestionValidator
         Required("explanationKeyFact", question.ExplanationKeyFact);
         Required("source", question.Source);
         if (question.TimeLimitSec is null or <= 0) Error("timeLimitSec", "Лимит времени должен быть положительным");
+        CheckStringArray(question.Categories, "categories");
+        var serviceClasses = CheckStringArray(question.ServiceClasses, "serviceClasses");
 
         if (question.Type is not (QuestionTypes.Single or QuestionTypes.Multiple or QuestionTypes.Sequence or QuestionTypes.Swipe))
         {
@@ -96,16 +98,9 @@ public static class QuestionValidator
                         foreach (var code in value.ScaleDeltas.Keys.Where(code => directory.Scales.All(scale => scale.Code != code)))
                             Error($"options.{side}.scaleDeltas.{code}", $"Шкалы «{code}» нет в справочнике");
 
-            try
-            {
-                foreach (var code in JsonSerializer.Deserialize<List<string>>(question.ServiceClasses) ?? [])
-                    if (directory.Classes.All(serviceClass => serviceClass.Code != code))
-                        Error("serviceClasses", $"Класса обслуживания «{code}» нет в справочнике");
-            }
-            catch (JsonException)
-            {
-                Error("serviceClasses", "Классы обслуживания не читаются");
-            }
+            foreach (var code in serviceClasses)
+                if (directory.Classes.All(serviceClass => serviceClass.Code != code))
+                    Error("serviceClasses", $"Класса обслуживания «{code}» нет в справочнике");
         }
 
         return new(errors);
@@ -114,6 +109,35 @@ public static class QuestionValidator
         {
             Required($"{path}.label", side.Label);
             if (side.ScaleDeltas is null) Error($"{path}.scaleDeltas", "Изменения Шкал не заданы");
+        }
+
+        IReadOnlyList<string> CheckStringArray(string json, string path)
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(json);
+                if (document.RootElement.ValueKind != JsonValueKind.Array)
+                {
+                    Error(path, "Ожидается список строк");
+                    return [];
+                }
+                var values = new List<string>();
+                var index = 0;
+                foreach (var item in document.RootElement.EnumerateArray())
+                {
+                    if (item.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(item.GetString()))
+                        Error($"{path}[{index}]", "Значение должно быть непустой строкой");
+                    else
+                        values.Add(item.GetString()!);
+                    index++;
+                }
+                return values;
+            }
+            catch (JsonException)
+            {
+                Error(path, "Список не читается");
+                return [];
+            }
         }
 
         void CheckItems<T>(IReadOnlyList<T>? items, string path, Func<T, string> idOf, Func<T, string> textOf) where T : class

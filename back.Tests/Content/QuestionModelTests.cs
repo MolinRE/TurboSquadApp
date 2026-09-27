@@ -114,6 +114,18 @@ public class QuestionModelTests
     }
 
     [Fact]
+    public void Publication_rejects_invalid_category_and_service_class_json()
+    {
+        var question = Published(QuestionTypes.Single);
+        question.SetOptions(new ChoiceOptions([new("a", "Да", true), new("b", "Нет", false)]));
+        question.Categories = "not-json";
+        question.ServiceClasses = "{}";
+        var paths = QuestionValidator.ValidateForPublication(question).Errors.Select(error => error.Path).ToHashSet();
+        Assert.Contains("categories", paths);
+        Assert.Contains("serviceClasses", paths);
+    }
+
+    [Fact]
     public void Mismatched_typed_options_cannot_be_written()
     {
         var question = Published(QuestionTypes.Sequence);
