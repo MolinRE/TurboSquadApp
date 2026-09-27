@@ -284,9 +284,24 @@ public sealed class TripService(
     public async Task<IResult> DebriefAsync(Guid userId, Guid tripId, CancellationToken cancellationToken)
     {
         if (await LoadAsync(userId, tripId, cancellationToken) is not { } trip) return Results.NotFound();
-        return trip.State.IsFinished
-            ? Results.Ok(Debrief.Build(trip.State))
-            : Rejected("TripNotFinished", "Разбор строится после Рейса: Рейс ещё не закончен");
+        if (!trip.State.IsFinished)
+            return Rejected("TripNotFinished", "Разбор строится после Рейса: Рейс ещё не закончен");
+        var facts = await dbContext.TripJournal
+            .Where(row => row.TripId == tripId && row.Kind == TripJournalKinds.Decision)
+            .OrderBy(row => row.Seq)
+            .Select(row => new DebriefDecisionFacts(row.KnowledgeDelta, row.ElapsedMs))
+            .ToListAsync(cancellationToken);
+        return Results.Ok(Debrief.Build(trip.State, facts));
+    }
+
+    public async Task<IResult> ListDebriefsAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        var history = await dbContext.Trips
+            .Where(trip => trip.UserId == userId && trip.FinishedAt != null)
+            .OrderByDescending(trip => trip.FinishedAt)
+            .Select(trip => new TripDebriefListItem(trip.Id, trip.Status, trip.StartedAt, trip.FinishedAt!.Value))
+            .ToListAsync(cancellationToken);
+        return Results.Ok(history);
     }
 
     private static TripView View(TripRecord record, TripState state, VoiceAttemptView? voiceAttempt = null) =>

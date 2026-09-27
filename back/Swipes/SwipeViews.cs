@@ -82,3 +82,18 @@ public sealed record CycleInfoView(int Number, IReadOnlyList<int> TimeLimitsMs, 
 public sealed record AnswerOutcomeView(
     Verdict Verdict, SwipeSide CorrectSide, Explanation Explanation, IReadOnlyDictionary<string, int> ScaleChanges,
     int ElapsedMs, bool TimedOut, ShiftStateView Shift);
+
+public sealed record SwipeAnswerSnapshot(
+    string Statement, string RightLabel, string LeftLabel, string CorrectSide, Explanation Explanation);
+
+public sealed record SwipeDebriefAnswer(
+    int Seq, string QuestionId, string Statement, string RightLabel, string LeftLabel, string CorrectSide,
+    string Answer, string Verdict, bool IsRepeat, int ElapsedMs, int KnowledgeDelta,
+    IReadOnlyDictionary<string, int> ScaleChanges, Explanation Explanation);
+
+public sealed record SwipeDebrief(
+    Guid ShiftId, string Result, string? FailedScale, int? Cycle,
+    IReadOnlyDictionary<string, string> ScaleNames, IReadOnlyList<SwipeDebriefAnswer> Answers);
+
+public sealed record SwipeDebriefListItem(
+    Guid Id, string Result, int? Cycle, DateTimeOffset StartedAt, DateTimeOffset FinishedAt);
