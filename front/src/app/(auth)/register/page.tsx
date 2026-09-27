@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
-import { ScreenPlaceholder } from "@/components/shell/screen-placeholder";
+import { RegisterForm } from "@/components/auth/register-form";
 import { getScreen } from "@/lib/screens";
 
 export const metadata: Metadata = { title: getScreen("register").title };
 
 export default function Page() {
-  return <ScreenPlaceholder id="register" />;
+  return <RegisterForm />;
 }

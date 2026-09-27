@@ -1,18 +1,35 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { ChevronRight, LoaderCircle } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { demoAccounts, type DemoAccount } from "@/lib/demo";
-import { demoLogin, signOut } from "@/lib/api";
+import { demoLogin, getCurrentUser, login, signOut } from "@/lib/api";
 
-/** «Войти как…»: кнопка входит в демо-аккаунт без пароля. Сюда же ведёт «Сменить аккаунт», поэтому экран сначала выходит. */
+/** Вход по логину и паролю, ниже «Войти как…» — демо-аккаунты без пароля. Сюда же ведёт «Сменить аккаунт», поэтому экран сначала выходит. */
 export default function Page() {
-  const [entering, setEntering] = useState<DemoAccount | null>(null);
+  const [entering, setEntering] = useState<DemoAccount | "form" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => signOut(), []);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    setEntering("form");
+    setError(null);
+    try {
+      await login(String(form.get("username")), String(form.get("password")));
+      const user = await getCurrentUser();
+      window.location.assign(user.roles.includes("manager") ? "/analytics/blind-spots" : "/home");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Не удалось войти");
+      setEntering(null);
+    }
+  }
 
   async function enter(account: DemoAccount) {
     setEntering(account);
@@ -28,10 +45,24 @@ export default function Page() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-1 text-center">
-        <h1 className="text-2xl font-extrabold tracking-tight">Войти как…</h1>
-        <p className="text-sm text-muted-foreground">Выберите демо-аккаунт</p>
-      </div>
+      <h1 className="text-center text-2xl font-extrabold tracking-tight">Вход</h1>
+
+      <form onSubmit={submit} className="flex flex-col gap-3 rounded-xl bg-card p-4">
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="login-username" className="text-sm font-semibold">Логин</label>
+          <Input id="login-username" name="username" autoComplete="username" required className="h-9" />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="login-password" className="text-sm font-semibold">Пароль</label>
+          <Input id="login-password" name="password" type="password" autoComplete="current-password" required className="h-9" />
+        </div>
+        <Button type="submit" size="lg" disabled={entering !== null}>
+          {entering === "form" && <LoaderCircle className="animate-spin" aria-hidden />}
+          Войти
+        </Button>
+      </form>
+
+      <p className="pt-2 text-center text-sm text-muted-foreground">или демо-аккаунт без пароля</p>
 
       <ul className="flex flex-col gap-2">
         {demoAccounts.map((account) => (
@@ -56,7 +87,7 @@ export default function Page() {
                   {account.description}
                 </span>
               </span>
-              {entering?.id === account.id ? (
+              {entering === account ? (
                 <LoaderCircle className="size-5 shrink-0 animate-spin text-muted-foreground" aria-hidden />
               ) : (
                 <ChevronRight className="size-5 shrink-0 text-muted-foreground" aria-hidden />
