@@ -343,13 +343,78 @@ public class TripApiTests(TripApiFactory factory) : IClassFixture<TripApiFactory
         await trip.Choose("a");                       // №6 → удачный Исход, №33 s1, таймер 20 с
 
         Assert.Equal("TimerNotExpired", await trip.Rejected($"/api/trips/{trip.Id}/timeout", new { eventId = trip.EventId, stepId = trip.StepId }));
-        factory.Clock.Advance(TimeSpan.FromSeconds(21.5));
-        await trip.Choose("a");                       // позже таймера больше чем на допуск: ветка таймаута
+        factory.Clock.Advance(TimeSpan.FromSeconds(22.5));
+        await trip.Choose("a");                       // позже таймера больше чем на допуск загрузки голоса (2 с): ветка таймаута
 
         Assert.Equal(("s2", 65, 85), (trip.StepId, trip.Scales.Loyalty, trip.Scales.Safety));
         var timedOut = await factory.Database(db =>
             db.TripJournal.SingleAsync(r => r.TripId == trip.Id && r.Kind == "decision" && r.EventId == "sit-33" && r.StepId == "s1"));
-        Assert.Equal((true, null, 21500), (timedOut.TimedOut, timedOut.VariantId, timedOut.ElapsedMs));
+        Assert.Equal((true, null, 22500), (timedOut.TimedOut, timedOut.VariantId, timedOut.ElapsedMs));
+    }
+
+    [Fact]
+    public async Task Voice_answer_started_before_deadline_counts_despite_recording_and_processing_time()
+    {
+        var trip = await TripClient.Start(factory, "standard");
+        await trip.Choose("a", "a");
+        await trip.Proactive("obhod");                // №6 s1, таймер 20 с
+
+        factory.Clock.Advance(TimeSpan.FromSeconds(23));
+        var response = await trip.PostVoice("s", recordingMs: 5_000);   // начал на 18-й секунде, обработка ещё 5 с
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("s2", (string)(await response.Content.ReadFromJsonAsync<JsonNode>())!["step"]!["stepId"]!);
+    }
+
+    [Fact]
+    public async Task Voice_answer_started_after_deadline_and_upload_tolerance_follows_timeout_branch()
+    {
+        var trip = await TripClient.Start(factory, "standard");
+        await trip.Choose("a", "a");
+        await trip.Proactive("obhod");
+
+        factory.Clock.Advance(TimeSpan.FromSeconds(25));
+        var response = await trip.PostVoice("a", recordingMs: 2_000);    // начал на 23-й секунде: позже 20 + 2 с
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = (await response.Content.ReadFromJsonAsync<JsonNode>())!;
+        Assert.Equal("VoiceDeadlineExceeded", (string)body["voiceAttempt"]!["errorCode"]!);
+        Assert.Equal("s3", (string)body["step"]!["stepId"]!);   // ветка таймаута №6 s1
+        Assert.True(await factory.Database(db => db.TripJournal.AnyAsync(
+            r => r.TripId == trip.Id && r.Kind == "decision" && r.StepId == "s1" && r.TimedOut)));
+    }
+
+    [Fact]
+    public async Task Passenger_reply_finishing_after_deadline_still_applies_accepted_answer()
+    {
+        var trip = await TripClient.Start(factory, "standard");
+        await trip.Choose("a", "a");
+        await trip.Proactive("obhod");
+
+        factory.Clock.Advance(TimeSpan.FromSeconds(19));
+        var attemptId = Guid.NewGuid().ToString("N");
+        Assert.Equal(HttpStatusCode.OK, (await trip.PostVoice("a", attemptId, recordingMs: 2_000)).StatusCode);
+        factory.Clock.Advance(TimeSpan.FromSeconds(10));
+        var stream = await (await trip.StreamReply(attemptId)).Content.ReadAsStringAsync();
+
+        Assert.Contains("event: done", stream);
+        Assert.Equal("s2", (string)(await trip.Get())["step"]!["stepId"]!);
+    }
+
+    [Fact]
+    public async Task Passenger_clarification_restarts_step_timer()
+    {
+        var trip = await TripClient.Start(factory, "standard");
+        await trip.Choose("a", "a");
+        await trip.Proactive("obhod");                // №6 s1, таймер 20 с
+
+        factory.Clock.Advance(TimeSpan.FromSeconds(15));
+        var attemptId = Guid.NewGuid().ToString("N");
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await trip.PostVoice("x", attemptId, recordingMs: 3_000)).StatusCode);
+        Assert.Contains("event: done", await (await trip.StreamReply(attemptId)).Content.ReadAsStringAsync());
+
+        var after = await trip.Get();
+        Assert.Equal(factory.Clock.Now.AddSeconds(20), (DateTimeOffset)after["step"]!["expiresAt"]!);
     }
 
     internal static IEnumerable<JsonNode> DebriefEvents(JsonNode debrief) =>
@@ -402,7 +467,7 @@ public class TripApiTests(TripApiFactory factory) : IClassFixture<TripApiFactory
             return await Get();
         }
 
-        public async Task<HttpResponseMessage> PostVoice(string marker, string? attemptId = null)
+        public async Task<HttpResponseMessage> PostVoice(string marker, string? attemptId = null, int? recordingMs = null)
         {
             using var form = new MultipartFormDataContent();
             form.Add(new StringContent(EventId!), "eventId");
@@ -411,6 +476,7 @@ public class TripApiTests(TripApiFactory factory) : IClassFixture<TripApiFactory
             var audio = new ByteArrayContent([ (byte)marker[0] ]);
             audio.Headers.ContentType = new MediaTypeHeaderValue("audio/wav");
             form.Add(audio, "audio", "answer.wav");
+            if (recordingMs is not null) form.Add(new StringContent(recordingMs.Value.ToString()), "recordingMs");
 
             return await http.PostAsync($"/api/trips/{Id}/voice", form);
         }

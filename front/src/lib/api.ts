@@ -256,6 +256,13 @@ export function chooseVariant(tripId: string, eventId: string, stepId: string, v
   });
 }
 
+export function timeOutStep(tripId: string, eventId: string, stepId: string) {
+  return json<TripView>(`/api/trips/${tripId}/timeout`, {
+    method: "POST",
+    body: JSON.stringify({ eventId, stepId }),
+  });
+}
+
 export function chooseProactive(tripId: string, optionId: string) {
   return json<TripView>(`/api/trips/${tripId}/proactive`, {
     method: "POST",
@@ -269,12 +276,15 @@ export async function uploadVoice(
   stepId: string,
   attemptId: string,
   audio: Blob,
+  recordingMs: number,
 ): Promise<TripView> {
   const form = new FormData();
   form.append("eventId", eventId);
   form.append("stepId", stepId);
   form.append("attemptId", attemptId);
   form.append("audio", audio, "voice-answer.webm");
+  // Таймер Шага — время на то, чтобы начать отвечать: сервер вычитает длительность записи.
+  form.append("recordingMs", String(Math.round(recordingMs)));
   const response = await fetch(`${API_BASE_URL}/api/trips/${tripId}/voice`, {
     method: "POST",
     headers: headers(),

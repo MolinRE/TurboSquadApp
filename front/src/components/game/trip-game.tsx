@@ -13,6 +13,7 @@ import {
   getTripDebrief,
   startTrip,
   streamPassengerReply,
+  timeOutStep,
   uploadVoice,
   type TripView,
   type TripDebrief,
@@ -209,20 +210,30 @@ function StepCard({
   replyError: string | null;
 }) {
   const step = trip.step!;
+  const [answering, setAnswering] = useState(false);
+  const timerPaused = busy || answering;
+
+  function expire() {
+    onError(null);
+    void timeOutStep(trip.id, step.eventId, step.stepId).then(onTrip).catch((reason) => onError(apiMessage(reason)));
+  }
+
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between gap-2"><Badge variant="secondary">{step.eventTitle}</Badge><StepTimer expiresAt={step.expiresAt} /></div>
+        <div className="flex flex-wrap items-center justify-between gap-2"><Badge variant="secondary" className="h-auto max-w-full whitespace-normal">{step.eventTitle}</Badge><StepTimer expiresAt={step.expiresAt} paused={timerPaused} onExpire={expire} /></div>
         <CardTitle>{step.situation}</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         {step.answerType === "voice" ? (
-          <VoiceRecorder trip={trip} busy={busy} onVoiceTrip={onVoiceTrip} onError={onError} />
+          <VoiceRecorder trip={trip} busy={busy} onVoiceTrip={onVoiceTrip} onError={onError} onAnswering={setAnswering} />
         ) : (
           <div className="flex flex-col gap-2">
             {step.variants.map((variant) => <Button key={variant.id} variant="outline" className="h-auto min-h-11 justify-start whitespace-normal py-3 text-left" disabled={busy} onClick={() => {
               onError(null);
-              void chooseVariant(trip.id, step.eventId, step.stepId, variant.id).then(onTrip).catch((reason) => onError(apiMessage(reason)));
+              setAnswering(true);
+              void chooseVariant(trip.id, step.eventId, step.stepId, variant.id).then(onTrip).catch((reason) => onError(apiMessage(reason)))
+                .finally(() => setAnswering(false));
             }}>{variant.text}</Button>)}
           </div>
         )}
@@ -234,8 +245,13 @@ function StepCard({
   );
 }
 
-function StepTimer({ expiresAt }: { expiresAt: string | null }) {
+/**
+ * Время на то, чтобы начать отвечать. Пока проводник отвечает или ждёт сервер, отсчёт не показывается
+ * и таймаут не отправляется; на нуле без ответа — таймаут Шага (сервер перепроверит по своим часам).
+ */
+function StepTimer({ expiresAt, paused, onExpire }: { expiresAt: string | null; paused: boolean; onExpire: () => void }) {
   const [remaining, setRemaining] = useState<number | null>(null);
+  const expired = useRef<string | null>(null);
   useEffect(() => {
     if (!expiresAt) return;
     const update = () => setRemaining(Math.max(0, Math.ceil((Date.parse(expiresAt) - Date.now()) / 1000)));
@@ -243,7 +259,15 @@ function StepTimer({ expiresAt }: { expiresAt: string | null }) {
     const timer = window.setInterval(update, 250);
     return () => window.clearInterval(timer);
   }, [expiresAt]);
-  return remaining === null ? null : <Badge variant={remaining <= 3 ? "destructive" : "outline"}>до {remaining} с</Badge>;
+  useEffect(() => {
+    // remaining мог остаться нулём от прошлого Шага: сверяемся с самим дедлайном.
+    if (!expiresAt || remaining !== 0 || paused || expired.current === expiresAt || Date.parse(expiresAt) > Date.now()) return;
+    expired.current = expiresAt;
+    onExpire();
+  }, [expiresAt, remaining, paused, onExpire]);
+  if (!expiresAt || remaining === null) return null;
+  if (paused) return <Badge variant="outline">Идёт ответ</Badge>;
+  return <Badge variant={remaining <= 3 ? "destructive" : "outline"}>начните за {remaining} с</Badge>;
 }
 
 function VoiceRecorder({
@@ -251,13 +275,16 @@ function VoiceRecorder({
   busy,
   onVoiceTrip,
   onError,
+  onAnswering,
 }: {
   trip: TripView;
   busy: boolean;
   onVoiceTrip: (trip: TripView) => Promise<void>;
   onError: (message: string | null) => void;
+  onAnswering: (answering: boolean) => void;
 }) {
   const [recording, setRecording] = useState(false);
+  const startedAt = useRef(0);
   const [processing, setProcessing] = useState(false);
   const recorder = useRef<MediaRecorder | null>(null);
   const stream = useRef<MediaStream | null>(null);
@@ -265,6 +292,8 @@ function VoiceRecorder({
 
   async function start() {
     onError(null);
+    startedAt.current = performance.now();
+    onAnswering(true);
     try {
       stream.current = await navigator.mediaDevices.getUserMedia({ audio: true });
       const nextRecorder = new MediaRecorder(stream.current);
@@ -277,7 +306,7 @@ function VoiceRecorder({
         stream.current = null;
         setRecording(false);
         setProcessing(true);
-        void uploadVoice(trip.id, trip.step!.eventId, trip.step!.stepId, attemptId, blob)
+        void uploadVoice(trip.id, trip.step!.eventId, trip.step!.stepId, attemptId, blob, performance.now() - startedAt.current)
           .then(onVoiceTrip)
           .catch((reason) => {
             const failedTrip = reason instanceof ApiError ? reason.payload?.trip : undefined;
@@ -285,13 +314,17 @@ function VoiceRecorder({
             // Низкая уверенность Laya — не ошибка: пассажир переспросит, и проводник ответит снова.
             if (!failedTrip?.voiceAttempt?.pending) onError(apiMessage(reason));
           })
-          .finally(() => setProcessing(false));
+          .finally(() => {
+            setProcessing(false);
+            onAnswering(false);
+          });
       };
       recorder.current = nextRecorder;
       nextRecorder.start();
       setRecording(true);
     } catch {
       stream.current?.getTracks().forEach((track) => track.stop());
+      onAnswering(false);
       onError("Нет доступа к микрофону. Разрешите микрофон и повторите попытку.");
     }
   }
