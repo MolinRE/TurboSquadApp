@@ -12,8 +12,8 @@ services:
       Jwt__Key: ${Jwt__Key:-local_demo_jwt_key_replace_with_random_32_chars}
       POLZA_API_KEY: ${POLZA_API_KEY:-}
       LAYA_API_TOKEN: ${LAYA_API_TOKEN:-}
-      # The shared DB is migrated deliberately (dotnet ef database update), not by every compose up.
-      Database__MigrateOnStartup: "false"
+      # Every compose up applies committed EF Core migrations to the shared DB.
+      Database__MigrateOnStartup: "true"
       ContentSeed__SeedOnStartup: "true"
       DemoAccounts__SeedOnStartup: ${DEMO_ACCOUNTS_SEED:-true}
       DemoAccounts__conductor-star__Password: ${DEMO_CONDUCTOR_STAR_PASSWORD:-local_demo_star_password}

@@ -113,7 +113,7 @@ app.UseCors("Frontend");
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Optionally applies committed EF Core migrations before startup seeders use the tables (off in Compose: the shared DB is migrated by hand).
+// Compose applies committed EF Core migrations before startup seeders use the tables.
 if (app.Configuration.GetValue("Database:MigrateOnStartup", false))
 {
     await using var scope = app.Services.CreateAsyncScope();

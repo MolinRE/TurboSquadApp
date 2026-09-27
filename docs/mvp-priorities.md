@@ -88,32 +88,32 @@
 База одна — PostgreSQL на VPS (управляемый, Cloud.ru, PostgreSQL 16). Жюри запускает `docker compose up` с нашим `.env` и работает с этой же базой. После сдачи изменения не вносим.
 
 **Перед сдачей:**
-- Накатить на VPS все миграции финального `main`: при старте API их не применяет. Проверка — `dotnet ef migrations list --project back` с загруженным `.env`: ни одной `(Pending)`.
+- Убедиться, что на VPS применены все миграции финального `main` (их применяет `docker compose up`): `dotnet ef migrations list --project back` с загруженным `.env` не показывает ни одной `(Pending)`.
 - Почистить тестовые данные: жюри видит всё, что лежит в базе.
 - Проверить, что VPS, Postgres и балансы polza.ai и Laya переживут весь период проверки: оплата, автозапуск после перезагрузки, место на диске.
 - Приложить к материалам сдачи `.env` целиком и один раз прогнать `docker compose up` с чистого клона.
 - Замерить голосовой Шаг не из нашей сети: API у жюри, БД в интернете.
-
-**После сдачи:**
-- Снять бэкап схемы `public`. Остальное в базе — служебная схема `cloudru` провайдера, её не трогаем:
+- **Последним шагом** снять бэкап и закоммитить его в репозиторий: после сдачи в репозиторий ничего не пушим, поэтому дамп попадает в git до неё. Бэкапим только схему `public`, остальное в базе — служебная схема `cloudru` провайдера:
   ```bash
   set -a; source .env; set +a
+  mkdir -p db-backup
   docker run --rm -e PGPASSWORD="$POSTGRES_PASSWORD" postgres:16 \
-    pg_dump -h 192.144.15.126 -p 55432 -U "$POSTGRES_USER" -d default -n public -Fc > turbosquad-$(date +%F).dump
+    pg_dump -h 192.144.15.126 -p 55432 -U "$POSTGRES_USER" -d default -n public -Fc > db-backup/turbosquad.dump
   ```
-- Проверить бэкап: восстановить во временный контейнер и сравнить число строк в таблицах с VPS.
+  Проверить дамп: восстановить во временный контейнер и сравнить число строк в таблицах с VPS. Затем закоммитить `db-backup/turbosquad.dump` и запушить в `main`.
   ```bash
   docker run -d --name pg-restore-check -e POSTGRES_PASSWORD=check postgres:16
   until docker exec pg-restore-check pg_isready -h 127.0.0.1 -U postgres -q; do sleep 1; done
-  docker exec -i pg-restore-check pg_restore -U postgres -d postgres --clean --if-exists --no-owner < turbosquad-ДАТА.dump
+  docker exec -i pg-restore-check pg_restore -U postgres -d postgres --clean --if-exists --no-owner < db-backup/turbosquad.dump
   docker rm -f pg-restore-check
   ```
-- Хранить копию дампа не только на VPS.
-- Вернуть базу к бэкапу в любой день (`dbadmin` владеет базой, поэтому `--clean` пересоздаёт схему `public`):
+
+**После сдачи:**
+- Если базу сломали, вернуть её к дампу из репозитория (`dbadmin` владеет базой, поэтому `--clean` пересоздаёт схему `public`):
   ```bash
   set -a; source .env; set +a
   docker run --rm -i -e PGPASSWORD="$POSTGRES_PASSWORD" postgres:16 \
-    pg_restore -h 192.144.15.126 -p 55432 -U "$POSTGRES_USER" -d default --clean --if-exists --no-owner < turbosquad-ДАТА.dump
+    pg_restore -h 192.144.15.126 -p 55432 -U "$POSTGRES_USER" -d default --clean --if-exists --no-owner < db-backup/turbosquad.dump
   ```
 
 ---

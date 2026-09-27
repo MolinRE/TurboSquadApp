@@ -2,7 +2,7 @@
 
 The backend uses EF Core with PostgreSQL. Set `ConnectionStrings:Postgres` in local configuration or through `ConnectionStrings__Postgres`. Set the database credentials with `POSTGRES_USER` and `POSTGRES_PASSWORD`; keep secrets out of the repository. The default connection string points at the team's shared PostgreSQL server (`192.144.15.126:55432`, database `default`), which replaced Supabase on 2026-09-27; it is reached directly, and the login and password come only from `POSTGRES_USER` and `POSTGRES_PASSWORD`. Docker Compose uses the same shared database; there is no local one.
 
-Neither Docker Compose nor a manual backend run applies migrations (`Database__MigrateOnStartup=false`): the shared database is migrated deliberately with the command below.
+Docker Compose sets `Database__MigrateOnStartup=true`, so every `docker compose up` applies committed EF Core migrations to the shared database before seeding. For a manual backend run, apply migrations yourself.
 
 After restoring packages, create and apply migrations with:
 
