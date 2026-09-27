@@ -24,8 +24,10 @@ public sealed class QuestionGenerationService(AppDbContext db, IQuestionGenerati
         return Results.Ok(drafts.Select(QuestionView.Of).ToList());
     }
 
-    public async Task<IResult> GenerateAsync(Guid sourceId, CancellationToken cancellationToken)
+    public async Task<IResult> GenerateAsync(Guid sourceId, string? model, CancellationToken cancellationToken)
     {
+        if (model is not null && !GenerationModels.Allowed.Contains(model))
+            return Results.BadRequest(new { message = "Эта модель не доступна для сравнения" });
         var source = await db.Sources.AsNoTracking().SingleOrDefaultAsync(item => item.Id == sourceId, cancellationToken);
         if (source is null) return Results.NotFound();
         var sections = SourceText.Sections(source.Text);
@@ -56,7 +58,7 @@ public sealed class QuestionGenerationService(AppDbContext db, IQuestionGenerati
                 var context = section.Context is null ? string.Empty :
                     $"Контекст Источника: {SourceText.RemovePersonalData(section.Context)}\n";
                 var prompt = new QuestionGenerationPrompt(SourceText.RemovePersonalData(source.Title), section.Reference,
-                    context + SourceText.RemovePersonalData(section.Text), topics, null);
+                    context + SourceText.RemovePersonalData(section.Text), topics, null, Model: model);
                 return (Section: section, Prompt: prompt, Response: await CallAsync(prompt, cancellationToken));
             }
             finally { slots.Release(); }
