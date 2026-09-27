@@ -9,7 +9,10 @@ export type { Explanation, MistakeItem, Verdict };
 
 export type BlitzStatus = "running" | "finished";
 
-/** Тип Вопроса: single — один ответ, multiple — несколько, верно только за точный набор; sequence — с #43. */
+/**
+ * Тип Вопроса: single — один ответ, multiple — несколько, верно только за точный набор; sequence — шаги,
+ * верно только за полный верный порядок. У sequence options — шаги в перемешанном порядке, id — по месту показа.
+ */
 export type BlitzQuestionType = "single" | "multiple" | "sequence";
 
 export type BlitzOption = {
@@ -59,6 +62,7 @@ export type BlitzAnswerOutcome = {
   verdict: Verdict;
   /** Время вышло: лимит истёк, ответ засчитан как «Не знаю». */
   timedOut: boolean;
+  /** Верные варианты; у sequence — id шагов в верном порядке. */
   correctOptionIds: string[];
   explanation: Explanation;
   /** Время ответа по часам сервера: от показа Вопроса до ответа. */
@@ -66,6 +70,12 @@ export type BlitzAnswerOutcome = {
   /** Сессия после ответа: без Вопроса, пока экран не попросит следующий, или итог. */
   session: BlitzSession;
 };
+
+/**
+ * Ответ на Вопрос: single — ровно один id, multiple — один или несколько без повторов;
+ * sequence — все шаги по порядку.
+ */
+export type BlitzAnswer = { selectedOptionIds: string[] } | { orderedStepIds: string[] };
 
 /** Код отказа правил в ответе 409 (payload.reason). */
 export type BlitzRejection =
@@ -82,8 +92,8 @@ export interface BlitzApi {
   getSession(sessionId: string): Promise<BlitzSession>;
   /** Показать следующий Вопрос: с этого момента сервер засекает время. Повторный вызов его не меняет. */
   showNextQuestion(sessionId: string): Promise<BlitzSession>;
-  /** questionId — Вопрос, на который отвечают: повторный ответ отклоняется. single — ровно один id, multiple — один или несколько без повторов. */
-  answer(sessionId: string, questionId: string, selectedOptionIds: string[]): Promise<BlitzAnswerOutcome>;
+  /** questionId — Вопрос, на который отвечают: повторный ответ отклоняется. */
+  answer(sessionId: string, questionId: string, answer: BlitzAnswer): Promise<BlitzAnswerOutcome>;
   /** Время вышло: засчитывается как «Не знаю». Сервер сверяет лимит по своим часам. */
   timeOut(sessionId: string, questionId: string): Promise<BlitzAnswerOutcome>;
 }

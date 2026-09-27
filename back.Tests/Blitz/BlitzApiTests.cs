@@ -181,6 +181,15 @@ public class BlitzApiTests(TripApiFactory factory) : IClassFixture<TripApiFactor
             return outcome;
         }
 
+        /// <summary>Отвечает на текущий Вопрос sequence порядком шагов.</summary>
+        public async Task<JsonNode> AnswerOrder(params string[] orderedStepIds)
+        {
+            Answered.Add(QuestionId);
+            var outcome = await Post("answer", new { questionId = QuestionId, orderedStepIds });
+            Json = outcome["session"]!;
+            return outcome;
+        }
+
         public async Task<JsonNode> TimeOut()
         {
             Answered.Add(QuestionId);
@@ -219,13 +228,15 @@ public class BlitzDeckTests(TripApiFactory factory) : IClassFixture<TripApiFacto
     {
         await SwipeDeckTests.PublishOnly(factory, "bz-dead-phone-ticket", "bz-unattended-item", "bz-role-model", "sw-pet-carrier");
 
-        // Свайпы в Блиц не идут, sequence — до #43.
+        // Свайпы в Блиц не идут.
         var session = await BlitzApiTests.BlitzClient.Start(factory);
-        Assert.Equal(2, session.Total);
+        Assert.Equal(3, session.Total);
         await AnswerByType(session);
         await session.NextQuestion();
         await AnswerByType(session);
-        Assert.Equal(["bz-dead-phone-ticket", "bz-unattended-item"], session.Answered.Order());
+        await session.NextQuestion();
+        await AnswerByType(session);
+        Assert.Equal(["bz-dead-phone-ticket", "bz-role-model", "bz-unattended-item"], session.Answered.Order());
 
         await SwipeDeckTests.PublishOnly(factory, "sw-pet-carrier");
         var http = await factory.CreateConductorClient();
@@ -234,8 +245,12 @@ public class BlitzDeckTests(TripApiFactory factory) : IClassFixture<TripApiFacto
         Assert.Equal("NoPublishedQuestions", (string)(await response.Content.ReadFromJsonAsync<JsonNode>())!["reason"]!);
     }
 
-    private static Task<JsonNode> AnswerByType(BlitzApiTests.BlitzClient session) =>
-        (string)session.Question!["type"]! == "multiple" ? session.Answer("a", "b", "c") : session.Answer("b");
+    private static Task<JsonNode> AnswerByType(BlitzApiTests.BlitzClient session) => (string)session.Question!["type"]! switch
+    {
+        "multiple" => session.Answer("a", "b", "c"),
+        "sequence" => session.AnswerOrder("a", "b", "c", "d"),
+        _ => session.Answer("b"),
+    };
 
     [Fact]
     public async Task Edit_of_source_question_after_start_does_not_change_started_session()
@@ -343,5 +358,108 @@ public class BlitzMultipleTests(TripApiFactory factory) : IClassFixture<TripApiF
         Assert.Equal(("unknown", true), ((string)timedOut["verdict"]!, (bool)timedOut["timedOut"]!));
         Assert.Equal(["unknown", "unknown"], session.Verdicts);
         Assert.Equal(2, session.Json["result"]!["mistakes"]!.AsArray().Count);
+    }
+}
+
+// Критерии тикета #43: Вопрос sequence засчитывается только за полный верный порядок шагов.
+// Своя база: в колоде только два sequence из сидов #40.
+public class BlitzSequenceTests(TripApiFactory factory) : IClassFixture<TripApiFactory>
+{
+    /// <summary>Верный порядок шагов по тексту — из «Ситуаций на борту», независимо от кода сервера.</summary>
+    private static readonly Dictionary<string, string[]> CorrectOrder = new()
+    {
+        ["bz-role-model"] = ["Признать ситуацию", "Обозначить правило", "Предложить решение", "Заверить"],
+        ["bz-pet-carrier-steps"] =
+        [
+            "Вежливо напомнить правила провоза питомцев",
+            "Предложить разместить животное в переноске, при продаже на борту — приобрести её",
+            "При отказе вызвать начальника поезда",
+        ],
+    };
+
+    private async Task<BlitzApiTests.BlitzClient> Start()
+    {
+        await SwipeDeckTests.PublishOnly(factory, [.. CorrectOrder.Keys]);
+        return await BlitzApiTests.BlitzClient.Start(factory);
+    }
+
+    private static List<(string Id, string Text)> Shown(BlitzApiTests.BlitzClient session) =>
+        session.Question!["options"]!.AsArray().Select(step => ((string)step!["id"]!, (string)step["text"]!)).ToList();
+
+    /// <summary>id показанных шагов в верном порядке.</summary>
+    private static string[] RightOrder(BlitzApiTests.BlitzClient session)
+    {
+        var shown = Shown(session);
+        return CorrectOrder[session.QuestionId].Select(text => shown.Single(step => step.Text == text).Id).ToArray();
+    }
+
+    [Fact]
+    public async Task Steps_come_shuffled_without_order_hint_and_full_right_order_is_correct()
+    {
+        var session = await Start();
+        Assert.Equal(("running", 0, 2), (session.Status, session.Done, session.Total));
+        var question = session.Question!;
+        Assert.Equal("sequence", (string)question["type"]!);
+        Assert.All(question["options"]!.AsArray(), step => Assert.Equal(["id", "text"], step!.AsObject().Select(p => p.Key)));
+
+        // Шаги перемешаны, а id — по месту показа: ни порядок показа, ни id не выдают верный порядок.
+        var shown = Shown(session);
+        Assert.NotEqual(CorrectOrder[session.QuestionId], shown.Select(step => step.Text));
+        Assert.Equal(shown.Select(step => step.Id).Order(), shown.Select(step => step.Id));
+        var right = RightOrder(session);
+        Assert.NotEqual(right.Order(), right);
+
+        var outcome = await session.AnswerOrder(right);
+        Assert.Equal(("correct", false), ((string)outcome["verdict"]!, (bool)outcome["timedOut"]!));
+        Assert.Equal(right, outcome["correctOptionIds"]!.AsArray().Select(id => (string)id!));
+        Assert.StartsWith("Ситуации на борту", (string)outcome["explanation"]!["source"]!);
+    }
+
+    [Fact]
+    public async Task Swap_of_any_two_steps_is_wrong_without_partial_credit()
+    {
+        // Шесть сессий: в каждой оба Вопроса с k-й перестановкой пары — все пары у 4 шагов и у 3 шагов.
+        for (var k = 0; k < 6; k++)
+        {
+            var session = await Start();
+            for (var answered = 0; answered < 2; answered++)
+            {
+                if (answered > 0) await session.NextQuestion();
+                var order = RightOrder(session);
+                var pairs = (from i in Enumerable.Range(0, order.Length) from j in Enumerable.Range(i + 1, order.Length - i - 1) select (i, j)).ToList();
+                var (a, b) = pairs[k % pairs.Count];
+                (order[a], order[b]) = (order[b], order[a]);
+                Assert.Equal("wrong", (string)(await session.AnswerOrder(order))["verdict"]!);
+            }
+            Assert.Equal(0, (int)session.Json["result"]!["correct"]!);
+        }
+    }
+
+    [Fact]
+    public async Task Order_and_time_are_stored_incomplete_order_is_rejected_and_timeout_counts_as_mistake()
+    {
+        var session = await Start();
+        var firstId = session.QuestionId;
+        var right = RightOrder(session);
+        Assert.Equal("InvalidSelection", await session.Rejected("answer", new { questionId = firstId, orderedStepIds = right[..^1] }));
+        Assert.Equal("InvalidSelection", await session.Rejected("answer", new { questionId = firstId, orderedStepIds = right.Append(right[0]).ToArray() }));
+        Assert.Equal("InvalidSelection", await session.Rejected("answer", new { questionId = firstId, selectedOptionIds = right }));
+
+        factory.Clock.Advance(TimeSpan.FromMilliseconds(3_400));
+        Assert.Equal((3_400, "correct"), ((int)(await session.AnswerOrder(right))["elapsedMs"]!, session.Verdicts[0]));
+        Assert.Equal("StaleQuestion", await session.Rejected("answer", new { questionId = firstId, orderedStepIds = right }));
+
+        // Лимит сидов sequence — 25 с.
+        await session.NextQuestion();
+        factory.Clock.Advance(TimeSpan.FromSeconds(25));
+        var timedOut = await session.TimeOut();
+        Assert.Equal(("unknown", true, 25_000), ((string)timedOut["verdict"]!, (bool)timedOut["timedOut"]!, (int)timedOut["elapsedMs"]!));
+        Assert.Equal(CorrectOrder[session.Answered[1]].Length, timedOut["correctOptionIds"]!.AsArray().Count);
+        Assert.Equal(("finished", 1), (session.Status, (int)session.Json["result"]!["correct"]!));
+
+        var answers = await factory.Database(db => db.BlitzAnswers.Where(a => a.SessionId == session.Id).OrderBy(a => a.Seq).ToListAsync());
+        Assert.Equal(
+            [(firstId, "[" + string.Join(",", right.Select(id => $"\"{id}\"")) + "]", "correct", 3_400), (session.Answered[1], "[]", "unknown", 25_000)],
+            answers.Select(a => (a.QuestionId, a.SelectedOptionIds, a.Verdict, a.ElapsedMs)));
     }
 }
