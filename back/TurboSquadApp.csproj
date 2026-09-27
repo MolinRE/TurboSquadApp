@@ -17,19 +17,6 @@
     </ItemGroup>
 
     <ItemGroup>
-        <!-- Исключаем папки из компиляции и отображения в IDE -->
-        <Compile Remove="**/BuildHost-net472/**" />
-        <None Remove="**/BuildHost-net472/**" />
-        <Content Remove="**/BuildHost-net472/**" />
-        <EmbeddedResource Remove="**/BuildHost-net472/**" />
-
-        <Compile Remove="**/config/**" />
-        <None Remove="**/config/**" />
-        <Content Remove="**/config/**" />
-        <EmbeddedResource Remove="**/config/**" />
-    </ItemGroup>
-
-    <ItemGroup>
         <!-- Стартовый контент Рейса: читается из ресурсов сборки, в publish отдельными файлами не нужен. -->
         <Content Remove="Content/Seeds/*.json" />
         <EmbeddedResource Include="Content/Seeds/*.json" />

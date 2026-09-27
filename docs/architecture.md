@@ -237,11 +237,11 @@ sequenceDiagram
 
 ```mermaid
 flowchart LR
-    Browser[Браузер] --> Front[container: front\nNext.js :3000]
-    Front --> Api[container: api\nASP.NET Core :8080]
-    Api --> Pg[(PostgreSQL\nобщая БД из .env)]
-    Api --> Polza[polza.ai\nSTT и LLM]
-    Api --> Laya[Laya HTTP endpoint]
+    Browser[Браузер] --> Front[container: front\nNext.js, React, TS, Tailwind]
+    Front --> Api[container: api\nASP.NET Core Web API, EF Core, Swagger]
+    Api --> Pg[(PostgreSQL кластер)]
+    Api --> Polza[polza.ai\nSTT и LLM решения]
+    Api --> Laya[laya кластер]
 ```
 
 `docker-compose.yml` поднимает `front` и `api`; подключение к PostgreSQL и секреты приходят из `.env`, а при старте API применяются EF Core migrations и seed-контент
